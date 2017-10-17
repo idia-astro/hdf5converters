@@ -2,6 +2,18 @@ from astropy.io import fits
 import h5py
 import numpy as np
 import sys
+from typing import List
+
+def assignKeysToAttributes(keys: List[str], header: fits.Header, obj, dtype='str'):
+    for key in keys:
+        if key in header.keys():
+            if dtype == 'f':
+                obj.attrs.create(key, float(header[key]))
+            elif dtype == 'i':
+                obj.attrs.create(key, int(header[key]))
+            else:
+                obj.attrs.create(key, np.string_(header[key]))
+
 
 if len(sys.argv) < 4:
     print("Usage: {} <stokes string> <input file 1> ... <input file N> <output file>".format(sys.argv[0]))
@@ -52,68 +64,38 @@ if len(prevDims) == 3:
             imageGroupExpression = 'Image{0:03d}'
             if dims[0] > 999:
                 imageGroupExpression = 'Image{0:04d}'
-            # for subBand in range(dims[0]):
-            for subBand in range(10):
+            for subBand in range(dims[0]):
                 sliceShape = dims[1:]
                 currentGroup = outputHDF5.create_group(imageGroupExpression.format(subBand))
                 coordinatesGroup = currentGroup.create_group("Coordinates")
                 directionCoordinatesGroup = coordinatesGroup.create_group("DirectionCoordinates")
-                if header['CTYPE1']:
-                    directionCoordinatesGroup.attrs.create('CTYPE1', np.string_(header['CTYPE1']))
-                if header['CRVAL1']:
-                    directionCoordinatesGroup.attrs.create('CRVAL1', float(header['CRVAL1']))
-                if header['CRPIX1']:
-                    directionCoordinatesGroup.attrs.create('CRPIX1', float(header['CRPIX1']))
-                if header['CDELT1']:
-                    directionCoordinatesGroup.attrs.create('CDELT1', float(header['CDELT1']))
-                if header['CROTA1']:
-                    directionCoordinatesGroup.attrs.create('CROTA1', float(header['CROTA1']))
-
-                if header['CTYPE2']:
-                    directionCoordinatesGroup.attrs.create('CTYPE2', np.string_(header['CTYPE2']))
-                if header['CRVAL2']:
-                    directionCoordinatesGroup.attrs.create('CRVAL2', float(header['CRVAL2']))
-                if header['CRPIX2']:
-                    directionCoordinatesGroup.attrs.create('CRPIX2', float(header['CRPIX2']))
-                if header['CDELT2']:
-                    directionCoordinatesGroup.attrs.create('CDELT2', float(header['CDELT2']))
-                if header['CROTA2']:
-                    directionCoordinatesGroup.attrs.create('CROTA2', float(header['CROTA2']))
-
-                if header['EQUINOX']:
-                    directionCoordinatesGroup.attrs.create('EQUINOX', float(header['EQUINOX']))
+                assignKeysToAttributes(['CTYPE1', 'CUINIT1'], header, directionCoordinatesGroup)
+                assignKeysToAttributes(['CRVAL1', 'CRPIX1', 'CDELT1', 'CROTA1'], header, directionCoordinatesGroup, 'f')
+                assignKeysToAttributes(['CTYPE2', 'CUINIT2'], header, directionCoordinatesGroup)
+                assignKeysToAttributes(['CRVAL2', 'CRPIX2', 'CDELT2', 'CROTA2'], header, directionCoordinatesGroup, 'f')
+                assignKeysToAttributes(['RADESYS'], header, directionCoordinatesGroup)
+                assignKeysToAttributes(['EQUINOX'], header, directionCoordinatesGroup, 'f')
 
                 spectralCoordinatesGroup = coordinatesGroup.create_group("SpectralCoordinate")
-                if header['CTYPE3']:
-                    spectralCoordinatesGroup.attrs.create('CTYPE3', np.string_(header['CTYPE3']))
-                if header['CRVAL3']:
-                    spectralCoordinatesGroup.attrs.create('CRVAL3', float(header['CRVAL3']))
-                if header['CRPIX3']:
-                    spectralCoordinatesGroup.attrs.create('CRPIX3', float(header['CRPIX3']))
-                if header['CDELT3']:
-                    spectralCoordinatesGroup.attrs.create('CDELT3', float(header['CDELT3']))
-                if header['CROTA3']:
-                    spectralCoordinatesGroup.attrs.create('CROTA3', float(header['CROTA3']))
+                assignKeysToAttributes(['CTYPE3', 'CUINIT3'], header, spectralCoordinatesGroup)
+                assignKeysToAttributes(['CRVAL3', 'CRPIX3', 'CDELT3', 'CROTA3'], header, spectralCoordinatesGroup, 'f')
 
                 polarizationCoordinateGroup = coordinatesGroup.create_group("PolarizationCoordinate")
                 polarizationCoordinateGroup.attrs.create('MultiStokes', True)
                 polarizationCoordinateGroup.attrs.create('StokesCoordinates', np.string_(stokesParms))
 
                 sourceTableGroup = currentGroup.create_group("SourceTable")
-                if header['TELE']:
-                    sourceTableGroup.attrs.create('TELE', np.string_(header['TELE']))
-                if header['OBSERVER']:
-                    sourceTableGroup.attrs.create('OBSERVER', np.string_(header['OBSERVER']))
-                if header['INSTR']:
-                    sourceTableGroup.attrs.create('INSTR', np.string_(header['INSTR']))
+                sourceHeaderAttributes = ['TELE', 'OBSERVER', 'INSTR', 'DATE-OBS', 'TIMESYS']
+                sourceHeaderAttributesFloat = ['OBSRA', 'OBSDEC', 'OBSGEO-X', 'OBSGEO-Y', 'OBSGEO-Z']
+                assignKeysToAttributes(sourceHeaderAttributes, header, sourceTableGroup)
+                assignKeysToAttributes(sourceHeaderAttributesFloat, header, sourceTableGroup, 'f')
 
                 processingHistoryGroup = currentGroup.create_group("ProcessingHistory")
                 for stokesIndex in range(len(stokesParms)):
                     stokesVal = stokesParms[stokesIndex]
                     sliceData = inputFits[stokesIndex][0].data[subBand, :, :]
                     dataSet = currentGroup.create_dataset("Data{}".format(stokesIndex), sliceShape, dtype='f4', data=sliceData)
-                    if header['BUNIT']:
-                        dataSet.attrs.create('BUNIT', np.string_(header['BUNIT']))
+                    assignKeysToAttributes(['BUNIT'], header, dataSet)
                     dataSet.attrs.create('Stokes', np.string_(stokesVal))
 
                 print("Finished processing {}".format(currentGroup.name))
