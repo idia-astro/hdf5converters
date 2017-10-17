@@ -4,7 +4,7 @@ import numpy as np
 import sys
 
 if len(sys.argv)<2:
-    print("Usage: {} <input file>".format(sys.argv[0]))
+    print("Usage: {} <input file> <Stokes parameter to assign (opt)>".format(sys.argv[0]))
     quit(1)
 
 inputFileName = sys.argv[1]
