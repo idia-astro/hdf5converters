@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 from astropy.io import fits
 import h5py
 import numpy as np
