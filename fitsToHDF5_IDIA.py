@@ -31,14 +31,14 @@ else:
 
 chunks = (int(sys.argv[2]), int(sys.argv[3]), int(sys.argv[4]))
 doChunks = True
-if chunks[0]<=0 or chunks[1]<=0 or chunks[2]<=0:
+if chunks[0] <= 0 or chunks[1] <= 0 or chunks[2] <= 0:
 	doChunks = False
 
 try:
 	with fits.open(inputFileName) as inputFits:
 		data = inputFits[0].data
 		dims = data.shape
-		if len(dims) == 4 and dims[0] ==1:
+		if len(dims) == 4:
 			dims = dims[1:]
 			data = inputFits[0].data[0, :, :, :]
 		if len(dims) == 3:
@@ -61,8 +61,77 @@ try:
 			# 	if i%10==0:
 			# 		print('Rotated slice {}'.format(i))
 
+			percentiles = np.array([0.001, 0.01, 0.05, 0.1, 0.5, 1.0, 5.0, 10.0, 50.0, 90.0, 95.0, 99.0, 99.5, 99.9, 99.95, 99.99, 99.999])
+
+			means = np.zeros(dims[0]+1)
+			minVals = np.zeros(dims[0]+1)
+			maxVals = np.zeros(dims[0]+1)
+			nanCounts = np.zeros(dims[0]+1)
+
+			averageData = np.zeros(dims[1:])
+			averageCount = np.zeros(dims[1:])
+
+			percentileVals = np.zeros([dims[0]+1, len(percentiles)])
+			N = int(np.sqrt(dims[1] * dims[2]))
+			histogramBins = np.zeros([dims[0]+1, N])
+			histogramFirstBinCenters = np.zeros(dims[0]+1)
+			histogramBinWidths = np.zeros(dims[0]+1)
+
+			for i in range(dims[0]):
+				tmpData = data[i, :, :]
+				nanArray = np.isnan(tmpData)
+				nanCounts[i] = np.count_nonzero(nanArray)
+				tmpDataNanFixed = tmpData[~nanArray]
+				if nanCounts[i] == tmpData.shape[0]*tmpData.shape[1]:
+					means[i] = np.NaN
+					minVals[i] = np.NaN
+					maxVals[i] = np.NaN
+					percentileVals[i, :] = np.NaN
+					histogramBins[i, :] = np.NaN
+					histogramBinWidths[i] = np.NaN
+					histogramFirstBinCenters[i] = np.NaN
+				else:
+					means[i] = np.mean(tmpDataNanFixed)
+					minVals[i] = np.min(tmpDataNanFixed)
+					maxVals[i] = np.max(tmpDataNanFixed)
+					percentileVals[i, :] = np.percentile(tmpDataNanFixed, percentiles)
+					(tmpBins, tmpEdges) = np.histogram(tmpDataNanFixed, N)
+					histogramBins[i, :] = tmpBins
+					histogramBinWidths[i] = tmpEdges[1] - tmpEdges[0]
+					histogramFirstBinCenters[i] = (tmpEdges[0] + tmpEdges[1]) / 2.0
+
+					averageCount += nanArray.astype(int)
+					averageData += np.nan_to_num(tmpData)
+
+			averageData /= np.fmax(averageCount, 1)
+			means[dims[0]] = np.nanmean(averageData)
+			minVals[dims[0]] = np.nanmin(averageData)
+			maxVals[dims[0]] = np.nanmax(averageData)
+			nanCounts[dims[0]] = np.count_nonzero(np.isnan(averageData))
+			percentileVals[dims[0], :] = np.percentile(averageData, percentiles)
+			(tmpBins, tmpEdges) = np.histogram(averageData, N)
+			histogramBins[dims[0], :] = tmpBins
+			histogramBinWidths[dims[0]] = tmpEdges[1] - tmpEdges[0]
+			histogramFirstBinCenters[dims[0]] = (tmpEdges[0] + tmpEdges[1]) / 2.0
+
 			try:
 				with h5py.File(outputFileName, "w") as outputHDF5:
+					statsGroup = outputHDF5.create_group("Statistics")
+
+					statsGroup.create_dataset("Means", [dims[0]+1], dtype='f4', data=means)
+					statsGroup.create_dataset("MinVals", [dims[0]+1], dtype='f4', data=minVals)
+					statsGroup.create_dataset("MaxVals", [dims[0]+1], dtype='f4', data=maxVals)
+					statsGroup.create_dataset("NaNCounts", [dims[0]+1], dtype='i4', data=nanCounts)
+
+					histGroup = statsGroup.create_group("Histograms")
+					histGroup.create_dataset("FirstCenters", [dims[0]+1], dtype='f4', data=histogramFirstBinCenters)
+					histGroup.create_dataset("BinWidths", [dims[0]+1], dtype='f4', data=histogramBinWidths)
+					histGroup.create_dataset("Bins", [dims[0]+1, N], dtype='i4', data=histogramBins)
+
+					percentileGroup = statsGroup.create_group("Percentiles")
+					percentileGroup.create_dataset("Percentiles", [len(percentiles)], dtype='f4', data=percentiles)
+					percentileGroup.create_dataset("Values", [dims[0]+1, len(percentiles)], dtype='f4', data=percentileVals)
+
 					syslogGroup = outputHDF5.create_group("SysLog")
 					if header['HISTORY']:
 						historyVals = []
@@ -104,16 +173,18 @@ try:
 					processingHistoryGroup = currentGroup.create_group("ProcessingHistory")
 					if doChunks:
 						dataSet = currentGroup.create_dataset("Data", dims, dtype='f4', data=data, chunks=(64, 64, 16))
-						#dataSetRotated = currentGroup.create_dataset("DataSwizzled", rotatedDims, dtype='f4', data=dataRotated, chunks=(64, 64, 16))
+					# dataSetRotated = currentGroup.create_dataset("DataSwizzled", rotatedDims, dtype='f4', data=dataRotated, chunks=(64, 64, 16))
 					else:
 						dataSet = currentGroup.create_dataset("Data", dims, dtype='f4', data=data)
-						#dataSetRotated = currentGroup.create_dataset("DataSwizzled", rotatedDims, dtype='f4', data=dataRotated)
+					# dataSetRotated = currentGroup.create_dataset("DataSwizzled", rotatedDims, dtype='f4', data=dataRotated)
 
+					dataSetAverage = currentGroup.create_dataset("AverageData", dims[1:], dtype='f4', data=averageData)
 					assignKeysToAttributes(['BUNIT'], header, dataSet)
+					assignKeysToAttributes(['BUNIT'], header, dataSetAverage)
 					if len(stokesParm):
 						dataSet.attrs.create('Stokes', np.string_(stokesParm))
+						dataSetAverage.attrs.create('Stokes', np.string_(stokesParm))
 
-						print("Finished processing {}".format(currentGroup.name))
 
 			except OSError as error:
 				print("Unable to create file {}".format(outputFileName))
