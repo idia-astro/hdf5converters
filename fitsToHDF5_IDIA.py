@@ -63,26 +63,26 @@ try:
 
 			percentiles = np.array([0.001, 0.01, 0.05, 0.1, 0.5, 1.0, 5.0, 10.0, 50.0, 90.0, 95.0, 99.0, 99.5, 99.9, 99.95, 99.99, 99.999])
 
-			means = np.zeros(dims[0]+1)
-			minVals = np.zeros(dims[0]+1)
-			maxVals = np.zeros(dims[0]+1)
-			nanCounts = np.zeros(dims[0]+1)
+			means = np.zeros(dims[0] + 1)
+			minVals = np.zeros(dims[0] + 1)
+			maxVals = np.zeros(dims[0] + 1)
+			nanCounts = np.zeros(dims[0] + 1)
 
 			averageData = np.zeros(dims[1:])
 			averageCount = np.zeros(dims[1:])
 
-			percentileVals = np.zeros([dims[0]+1, len(percentiles)])
+			percentileVals = np.zeros([dims[0] + 1, len(percentiles)])
 			N = int(np.sqrt(dims[1] * dims[2]))
-			histogramBins = np.zeros([dims[0]+1, N])
-			histogramFirstBinCenters = np.zeros(dims[0]+1)
-			histogramBinWidths = np.zeros(dims[0]+1)
+			histogramBins = np.zeros([dims[0] + 1, N])
+			histogramFirstBinCenters = np.zeros(dims[0] + 1)
+			histogramBinWidths = np.zeros(dims[0] + 1)
 
 			for i in range(dims[0]):
 				tmpData = data[i, :, :]
 				nanArray = np.isnan(tmpData)
 				nanCounts[i] = np.count_nonzero(nanArray)
 				tmpDataNanFixed = tmpData[~nanArray]
-				if nanCounts[i] == tmpData.shape[0]*tmpData.shape[1]:
+				if nanCounts[i] == tmpData.shape[0] * tmpData.shape[1]:
 					means[i] = np.NaN
 					minVals[i] = np.NaN
 					maxVals[i] = np.NaN
@@ -100,16 +100,18 @@ try:
 					histogramBinWidths[i] = tmpEdges[1] - tmpEdges[0]
 					histogramFirstBinCenters[i] = (tmpEdges[0] + tmpEdges[1]) / 2.0
 
-					averageCount += nanArray.astype(int)
+					averageCount += (~nanArray).astype(int)
 					averageData += np.nan_to_num(tmpData)
 
 			averageData /= np.fmax(averageCount, 1)
-			means[dims[0]] = np.nanmean(averageData)
-			minVals[dims[0]] = np.nanmin(averageData)
-			maxVals[dims[0]] = np.nanmax(averageData)
+			averageData[averageCount < 1] = np.NaN
+			averageDataNaNFixed = averageData[~np.isnan(averageData)]
+			means[dims[0]] = np.mean(averageDataNaNFixed)
+			minVals[dims[0]] = np.min(averageDataNaNFixed)
+			maxVals[dims[0]] = np.max(averageDataNaNFixed)
 			nanCounts[dims[0]] = np.count_nonzero(np.isnan(averageData))
-			percentileVals[dims[0], :] = np.percentile(averageData, percentiles)
-			(tmpBins, tmpEdges) = np.histogram(averageData, N)
+			percentileVals[dims[0], :] = np.percentile(averageDataNaNFixed, percentiles)
+			(tmpBins, tmpEdges) = np.histogram(averageDataNaNFixed, N)
 			histogramBins[dims[0], :] = tmpBins
 			histogramBinWidths[dims[0]] = tmpEdges[1] - tmpEdges[0]
 			histogramFirstBinCenters[dims[0]] = (tmpEdges[0] + tmpEdges[1]) / 2.0
@@ -118,19 +120,19 @@ try:
 				with h5py.File(outputFileName, "w") as outputHDF5:
 					statsGroup = outputHDF5.create_group("Statistics")
 
-					statsGroup.create_dataset("Means", [dims[0]+1], dtype='f4', data=means)
-					statsGroup.create_dataset("MinVals", [dims[0]+1], dtype='f4', data=minVals)
-					statsGroup.create_dataset("MaxVals", [dims[0]+1], dtype='f4', data=maxVals)
-					statsGroup.create_dataset("NaNCounts", [dims[0]+1], dtype='i4', data=nanCounts)
+					statsGroup.create_dataset("Means", [dims[0] + 1], dtype='f4', data=means)
+					statsGroup.create_dataset("MinVals", [dims[0] + 1], dtype='f4', data=minVals)
+					statsGroup.create_dataset("MaxVals", [dims[0] + 1], dtype='f4', data=maxVals)
+					statsGroup.create_dataset("NaNCounts", [dims[0] + 1], dtype='i4', data=nanCounts)
 
 					histGroup = statsGroup.create_group("Histograms")
-					histGroup.create_dataset("FirstCenters", [dims[0]+1], dtype='f4', data=histogramFirstBinCenters)
-					histGroup.create_dataset("BinWidths", [dims[0]+1], dtype='f4', data=histogramBinWidths)
-					histGroup.create_dataset("Bins", [dims[0]+1, N], dtype='i4', data=histogramBins)
+					histGroup.create_dataset("FirstCenters", [dims[0] + 1], dtype='f4', data=histogramFirstBinCenters)
+					histGroup.create_dataset("BinWidths", [dims[0] + 1], dtype='f4', data=histogramBinWidths)
+					histGroup.create_dataset("Bins", [dims[0] + 1, N], dtype='i4', data=histogramBins)
 
 					percentileGroup = statsGroup.create_group("Percentiles")
 					percentileGroup.create_dataset("Percentiles", [len(percentiles)], dtype='f4', data=percentiles)
-					percentileGroup.create_dataset("Values", [dims[0]+1, len(percentiles)], dtype='f4', data=percentileVals)
+					percentileGroup.create_dataset("Values", [dims[0] + 1, len(percentiles)], dtype='f4', data=percentileVals)
 
 					syslogGroup = outputHDF5.create_group("SysLog")
 					if header['HISTORY']:
