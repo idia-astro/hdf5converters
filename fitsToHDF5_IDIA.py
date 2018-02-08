@@ -28,8 +28,7 @@ def get_or_create_group(parent, name):
     return parent.create_group(name)
 
 
-def write_core(inputFits, outputHDF5, args):
-    header = inputFits[0].header
+def write_core(header, data, outputHDF5, args):
     copy_attrs = get_attr_copier(header)
     
     syslogGroup = outputHDF5.create_group("SysLog")
@@ -62,7 +61,7 @@ def write_core(inputFits, outputHDF5, args):
     copy_attrs(sourceTableGroup, ['OBSRA', 'OBSDEC', 'OBSGEO-X', 'OBSGEO-Y', 'OBSGEO-Z'], float)
 
     # Currently unused?
-    #processingHistoryGroup = currentGroup.create_group("ProcessingHistory")
+    processingHistoryGroup = currentGroup.create_group("ProcessingHistory")
     
     if args.chunks:
         dataSet = currentGroup.create_dataset("Data", dims, dtype='f4', data=data, chunks=tuple(args.chunks))
@@ -75,8 +74,7 @@ def write_core(inputFits, outputHDF5, args):
         dataSet.attrs.create('Stokes', convert(args.stokes))
 
 
-def write_statistics(inputFits, outputHDF5, args):
-    data = inputFits[0].data
+def write_statistics(header, data, outputHDF5, args):
     dims = data.shape
     
     # CALCULATE
@@ -137,9 +135,7 @@ def write_statistics(inputFits, outputHDF5, args):
     histogramFirstBinCenters[dims[0]] = (tmpEdges[0] + tmpEdges[1]) / 2.0
     
     # WRITE
-    
-    header = inputFits[0].header
-    
+        
     copy_attrs = get_attr_copier(header)
 
     statsGroup = outputHDF5.create_group("Statistics")
@@ -197,14 +193,18 @@ if __name__ == '__main__':
             dims = dims[1:]
             data = data[0, :, :, :]
             
+        # TODO: coerce 2D cubes to 3D
+            
         if len(dims) == 3:
             print('3D FITS file found, converting to HDF5 using IDIA customised LOFAR-USG-ICD-004 data structure')
             print('File dims: {}'.format(dims))
             print('Chunk dims: {}'.format(args.chunks))
+            
+            header = inputFits[0].header
 
             with h5py.File(outputFileName, "w") as outputHDF5:
-                write_core(inputFits, outputHDF5, args)
-                write_statistics(inputFits, outputHDF5, args)
+                write_core(header, data, outputHDF5, args)
+                write_statistics(header, data, outputHDF5, args)
 
         else:
             print('Only 3D FITS files supported for now')
