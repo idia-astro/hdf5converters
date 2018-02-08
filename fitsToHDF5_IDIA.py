@@ -5,6 +5,7 @@ import numpy as np
 import sys
 from typing import List
 import argparse
+import os
 
 if len(sys.argv) < 5:
     print("Usage: {} <input file> <Z-chunk> <Y-chunk> <X-chunk> <Stokes parameter to assign (opt)>".format(sys.argv[0]))
@@ -34,12 +35,14 @@ with fits.open(inputFileName) as inputFits:
         print('3D FITS file found, converting to HDF5 using IDIA customised LOFAR-USG-ICD-004 data structure')
         print('File dims: {}'.format(dims))
         print('Chunk dims: {}'.format(chunks))
+        
+        baseFileName, _ = os.path.splitext(inputFileName)
+        
         if doChunks:
-            outputFileName = inputFileName + "_chunked_{}_{}_{}.hdf5".format(chunks[0], chunks[1], chunks[2])
+            outputFileName = baseFileName + "_chunked_{}_{}_{}.hdf5".format(chunks[0], chunks[1], chunks[2])
         else:
-            outputFileName = inputFileName + ".hdf5"
-        outputFileName = outputFileName.replace(".fits", "")
-        outputFileName = outputFileName.replace(".FITS", "")
+            outputFileName = baseFileName + ".hdf5"
+
         header = inputFits[0].header  # type: fits.Header
 
         percentiles = np.array([0.001, 0.01, 0.05, 0.1, 0.5, 1.0, 5.0, 10.0, 50.0, 90.0, 95.0, 99.0, 99.5, 99.9, 99.95, 99.99, 99.999])
