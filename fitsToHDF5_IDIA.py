@@ -135,17 +135,12 @@ try:
                     percentileGroup.create_dataset("Values", [dims[0] + 1, len(percentiles)], dtype='f4', data=percentileVals)
 
                     syslogGroup = outputHDF5.create_group("SysLog")
+                    
                     if 'HISTORY' in header:
-                        historyVals = []
-                        for val in header['HISTORY']:
-                            historyVals.append(np.string_(val))
-                        syslogGroup.attrs.create('HISTORY', historyVals)
-
+                        syslogGroup.attrs.create('HISTORY', [np.string_(val) for val in header['HISTORY']])
+                        
                     if 'COMMENT' in header:
-                        commentVals = []
-                        for val in header['COMMENT']:
-                            commentVals.append(np.string_(val))
-                        syslogGroup.attrs.create('COMMENT', commentVals)
+                        syslogGroup.attrs.create('COMMENT', [np.string_(val) for val in header['COMMENT']])
 
                     currentGroup = outputHDF5.create_group("Image")
                     coordinatesGroup = currentGroup.create_group("Coordinates")
