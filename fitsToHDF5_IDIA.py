@@ -4,18 +4,7 @@ import h5py
 import numpy as np
 import sys
 from typing import List
-
-
-def assignKeysToAttributes(keys: List[str], header: fits.Header, obj, dtype='str'):
-    for key in keys:
-        if key in header.keys():
-            if dtype == 'f':
-                obj.attrs.create(key, float(header[key]))
-            elif dtype == 'i':
-                obj.attrs.create(key, int(header[key]))
-            else:
-                obj.attrs.create(key, np.string_(header[key]))
-
+import argparse
 
 if len(sys.argv) < 5:
     print("Usage: {} <input file> <Z-chunk> <Y-chunk> <X-chunk> <Stokes parameter to assign (opt)>".format(sys.argv[0]))
@@ -115,6 +104,16 @@ with fits.open(inputFileName) as inputFits:
         histogramBins[dims[0], :] = tmpBins
         histogramBinWidths[dims[0]] = tmpEdges[1] - tmpEdges[0]
         histogramFirstBinCenters[dims[0]] = (tmpEdges[0] + tmpEdges[1]) / 2.0
+                    
+        def convert(val, dtype=None):
+            if dtype:
+                return dtype(val)
+            return np.string_(val)
+        
+        def copy_attrs(obj, keys: List[str], dtype=None):
+            for key in keys:
+                if key in header:
+                    obj.attrs.create(key, convert(header[key], dtype))
 
 
         with h5py.File(outputFileName, "w") as outputHDF5:
@@ -145,27 +144,22 @@ with fits.open(inputFileName) as inputFits:
             currentGroup = outputHDF5.create_group("Image")
             coordinatesGroup = currentGroup.create_group("Coordinates")
             directionCoordinatesGroup = coordinatesGroup.create_group("DirectionCoordinates")
-            assignKeysToAttributes(['CTYPE1', 'CUINIT1'], header, directionCoordinatesGroup)
-            assignKeysToAttributes(['CRVAL1', 'CRPIX1', 'CDELT1', 'CROTA1'], header, directionCoordinatesGroup, 'f')
-            assignKeysToAttributes(['CTYPE2', 'CUINIT2'], header, directionCoordinatesGroup)
-            assignKeysToAttributes(['CRVAL2', 'CRPIX2', 'CDELT2', 'CROTA2'], header, directionCoordinatesGroup, 'f')
-            assignKeysToAttributes(['RADESYS'], header, directionCoordinatesGroup)
-            assignKeysToAttributes(['EQUINOX'], header, directionCoordinatesGroup, 'f')
+            
+            copy_attrs(directionCoordinatesGroup, ['CTYPE1', 'CUINIT1', 'CTYPE2', 'CUINIT2', 'RADESYS'])
+            copy_attrs(directionCoordinatesGroup, ['CRVAL1', 'CRPIX1', 'CDELT1', 'CROTA1', 'CRVAL2', 'CRPIX2', 'CDELT2', 'CROTA2', 'EQUINOX'], float)
 
             spectralCoordinatesGroup = coordinatesGroup.create_group("SpectralCoordinate")
-            assignKeysToAttributes(['CTYPE3', 'CUINIT3'], header, spectralCoordinatesGroup)
-            assignKeysToAttributes(['CRVAL3', 'CRPIX3', 'CDELT3', 'CROTA3'], header, spectralCoordinatesGroup, 'f')
+            copy_attrs(spectralCoordinatesGroup, ['CTYPE3', 'CUINIT3'])
+            copy_attrs(spectralCoordinatesGroup, ['CRVAL3', 'CRPIX3', 'CDELT3', 'CROTA3'], float)
 
             polarizationCoordinateGroup = coordinatesGroup.create_group("PolarizationCoordinate")
             polarizationCoordinateGroup.attrs.create('MultiStokes', False)
             if len(stokesParm):
-                polarizationCoordinateGroup.attrs.create('StokesCoordinates', np.string_(stokesParm))
+                polarizationCoordinateGroup.attrs.create('StokesCoordinates', convert(stokesParm))
 
             sourceTableGroup = currentGroup.create_group("SourceTable")
-            sourceHeaderAttributes = ['TELE', 'OBSERVER', 'INSTR', 'DATE-OBS', 'TIMESYS']
-            sourceHeaderAttributesFloat = ['OBSRA', 'OBSDEC', 'OBSGEO-X', 'OBSGEO-Y', 'OBSGEO-Z']
-            assignKeysToAttributes(sourceHeaderAttributes, header, sourceTableGroup)
-            assignKeysToAttributes(sourceHeaderAttributesFloat, header, sourceTableGroup, 'f')
+            copy_attrs(sourceTableGroup, ['TELE', 'OBSERVER', 'INSTR', 'DATE-OBS', 'TIMESYS'])
+            copy_attrs(sourceTableGroup, ['OBSRA', 'OBSDEC', 'OBSGEO-X', 'OBSGEO-Y', 'OBSGEO-Z'], float)
 
             processingHistoryGroup = currentGroup.create_group("ProcessingHistory")
             if doChunks:
@@ -176,11 +170,12 @@ with fits.open(inputFileName) as inputFits:
             # dataSetRotated = currentGroup.create_dataset("DataSwizzled", rotatedDims, dtype='f4', data=dataRotated)
 
             dataSetAverage = currentGroup.create_dataset("AverageData", dims[1:], dtype='f4', data=averageData)
-            assignKeysToAttributes(['BUNIT'], header, dataSet)
-            assignKeysToAttributes(['BUNIT'], header, dataSetAverage)
+            copy_attrs(dataSet, ['BUNIT'])
+            copy_attrs(dataSetAverage, ['BUNIT'])
+            
             if len(stokesParm):
-                dataSet.attrs.create('Stokes', np.string_(stokesParm))
-                dataSetAverage.attrs.create('Stokes', np.string_(stokesParm))
+                dataSet.attrs.create('Stokes', convert(stokesParm))
+                dataSetAverage.attrs.create('Stokes', convert(stokesParm))
 
     else:
         print('Only 3D FITS files supported for now')
