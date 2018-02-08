@@ -42,14 +42,6 @@ with fits.open(inputFileName) as inputFits:
         outputFileName = outputFileName.replace(".FITS", "")
         header = inputFits[0].header  # type: fits.Header
 
-        # rotatedDims = (dims[2], dims[1], dims[0])
-        # dataRotated = np.zeros(rotatedDims, dtype='f4')
-        # for i in range (rotatedDims[2]):
-        #     tmpData = np.array(inputFits[0].data[i, :, :])
-        #     dataRotated[:, :, i] = np.swapaxes(tmpData, 0, 1)
-        #     if i%10==0:
-        #         print('Rotated slice {}'.format(i))
-
         percentiles = np.array([0.001, 0.01, 0.05, 0.1, 0.5, 1.0, 5.0, 10.0, 50.0, 90.0, 95.0, 99.0, 99.5, 99.9, 99.95, 99.99, 99.999])
 
         means = np.zeros(dims[0] + 1)
@@ -164,10 +156,8 @@ with fits.open(inputFileName) as inputFits:
             processingHistoryGroup = currentGroup.create_group("ProcessingHistory")
             if doChunks:
                 dataSet = currentGroup.create_dataset("Data", dims, dtype='f4', data=data, chunks=(64, 64, 16))
-            # dataSetRotated = currentGroup.create_dataset("DataSwizzled", rotatedDims, dtype='f4', data=dataRotated, chunks=(64, 64, 16))
             else:
                 dataSet = currentGroup.create_dataset("Data", dims, dtype='f4', data=data)
-            # dataSetRotated = currentGroup.create_dataset("DataSwizzled", rotatedDims, dtype='f4', data=dataRotated)
 
             dataSetAverage = currentGroup.create_dataset("AverageData", dims[1:], dtype='f4', data=averageData)
             copy_attrs(dataSet, ['BUNIT'])
