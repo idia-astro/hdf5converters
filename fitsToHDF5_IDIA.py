@@ -170,14 +170,12 @@ if __name__ == '__main__':
     args = parser.parse_args()
     
     if args.stokes:
-        print('Using Stokes parameter {}'.format(args.stokes))
+        print('Using Stokes parameter {}.'.format(args.stokes))
     else:
-        print('No Stokes parameter specified')
+        print('No Stokes parameter specified.')
     
     baseFileName, _ = os.path.splitext(args.filename)
-    
-    print(args.chunks)
-        
+
     if args.chunks:
         outputFileName = baseFileName + "_chunked_{}_{}_{}.hdf5".format(args.chunks[0], args.chunks[1], args.chunks[2])
     else:
