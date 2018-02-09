@@ -189,7 +189,9 @@ if __name__ == '__main__':
             dims = dims[1:]
             data = data[0, :, :, :]
             
-        # TODO: coerce 2D cubes to 3D
+        if len(dims) == 2:
+            dims = (1, *dims)
+            data = data[None, :]
             
         if len(dims) == 3:
             print('3D FITS file found, converting to HDF5 using IDIA customised LOFAR-USG-ICD-004 data structure')
