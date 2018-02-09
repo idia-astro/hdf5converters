@@ -3,32 +3,30 @@ from astropy.io import fits
 import h5py
 import numpy as np
 import sys
-from typing import List
+from typing import List, Callable
 import argparse
 import os
 
 
-def convert(val, dtype=None):
-    if dtype:
-        return dtype(val)
-    return np.string_(val)
+def convert(val, dtype: Callable = np.string_):
+    return dtype(val)
 
 
-def get_attr_copier(header):
-    def copy_attrs(obj, keys: List[str], dtype=None):
+def get_attr_copier(header: fits.Header):
+    def copy_attrs(obj, keys: List[str], dtype: Callable = np.string_):
         for key in keys:
             if key in header:
                 obj.attrs.create(key, convert(header[key], dtype))
     return copy_attrs
 
 
-def get_or_create_group(parent, name):
+def get_or_create_group(parent: h5py.Group, name: str):
     if name in parent:
         return parent[name]
     return parent.create_group(name)
 
 
-def write_core(header, data, outputHDF5, args):
+def write_core(header: fits.Header, data: np.ndarray, outputHDF5: h5py.File, args: argparse.Namespace):
     copy_attrs = get_attr_copier(header)
     
     syslogGroup = outputHDF5.create_group("SysLog")
@@ -74,7 +72,7 @@ def write_core(header, data, outputHDF5, args):
         dataSet.attrs.create('Stokes', convert(args.stokes))
 
 
-def write_statistics(header, data, outputHDF5, args):
+def write_statistics(header: fits.Header, data: np.ndarray, outputHDF5: h5py.File, args: argparse.Namespace):
     dims = data.shape
     
     # CALCULATE
@@ -179,7 +177,7 @@ if __name__ == '__main__':
     baseFileName, _ = os.path.splitext(args.filename)
     
     print(args.chunks)
-    
+        
     if args.chunks:
         outputFileName = baseFileName + "_chunked_{}_{}_{}.hdf5".format(args.chunks[0], args.chunks[1], args.chunks[2])
     else:
