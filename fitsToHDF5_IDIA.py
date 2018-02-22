@@ -3,20 +3,22 @@ from astropy.io import fits
 import h5py
 import numpy as np
 import sys
-from typing import List, Callable
+from typing import Sequence, Callable
 import argparse
 import os
 
 
-def convert(val, dtype: Callable = np.string_):
-    return dtype(val)
+def convert(val):
+    if isinstance(val, str):
+        return np.string_(val)
+    return val
 
 
 def get_attr_copier(header: fits.Header):
-    def copy_attrs(obj, keys: List[str], dtype: Callable = np.string_):
+    def copy_attrs(obj, keys: Sequence[str]):
         for key in keys:
             if key in header:
-                obj.attrs.create(key, convert(header[key], dtype))
+                obj.attrs.create(key, convert(header[key]))
     return copy_attrs
 
 
@@ -43,11 +45,11 @@ def write_core(header: fits.Header, data: np.ndarray, outputHDF5: h5py.File, arg
     
     directionCoordinatesGroup = coordinatesGroup.create_group("DirectionCoordinates")
     copy_attrs(directionCoordinatesGroup, ['CTYPE1', 'CUINIT1', 'CTYPE2', 'CUINIT2', 'RADESYS'])
-    copy_attrs(directionCoordinatesGroup, ['CRVAL1', 'CRPIX1', 'CDELT1', 'CROTA1', 'CRVAL2', 'CRPIX2', 'CDELT2', 'CROTA2', 'EQUINOX'], float)
+    copy_attrs(directionCoordinatesGroup, ['CRVAL1', 'CRPIX1', 'CDELT1', 'CROTA1', 'CRVAL2', 'CRPIX2', 'CDELT2', 'CROTA2', 'EQUINOX'])
 
     spectralCoordinatesGroup = coordinatesGroup.create_group("SpectralCoordinate")
     copy_attrs(spectralCoordinatesGroup, ['CTYPE3', 'CUINIT3'])
-    copy_attrs(spectralCoordinatesGroup, ['CRVAL3', 'CRPIX3', 'CDELT3', 'CROTA3'], float)
+    copy_attrs(spectralCoordinatesGroup, ['CRVAL3', 'CRPIX3', 'CDELT3', 'CROTA3'])
 
     polarizationCoordinateGroup = coordinatesGroup.create_group("PolarizationCoordinate")
     polarizationCoordinateGroup.attrs.create('MultiStokes', False)
@@ -56,7 +58,7 @@ def write_core(header: fits.Header, data: np.ndarray, outputHDF5: h5py.File, arg
 
     sourceTableGroup = currentGroup.create_group("SourceTable")
     copy_attrs(sourceTableGroup, ['TELE', 'OBSERVER', 'INSTR', 'DATE-OBS', 'TIMESYS'])
-    copy_attrs(sourceTableGroup, ['OBSRA', 'OBSDEC', 'OBSGEO-X', 'OBSGEO-Y', 'OBSGEO-Z'], float)
+    copy_attrs(sourceTableGroup, ['OBSRA', 'OBSDEC', 'OBSGEO-X', 'OBSGEO-Y', 'OBSGEO-Z'])
 
     # Currently unused?
     processingHistoryGroup = currentGroup.create_group("ProcessingHistory")
