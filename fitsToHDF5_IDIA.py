@@ -6,7 +6,14 @@ import sys
 from typing import Sequence, Callable
 import argparse
 import os
+import re
 
+# FITS header attributes to keep (exact names)
+FITS_KEEP = ('BUNIT', 'DATE-OBS', 'EQUINOX', 'INSTR', 'OBSDEC', 'OBSERVER', 'OBSGEO-X', 'OBSGEO-Y', 'OBSGEO-Z', 'OBSRA', 'RADESYS', 'TELE', 'TIMESYS')
+# FITS header attributes to keep (regular expression matches)
+FITS_KEEP_RE = (
+    re.compile('^(CDELT|CROTA|CRPIX|CRVAL|CTYPE|CUNIT)\d+'),
+)
 
 def convert(val):
     if isinstance(val, str):
@@ -31,71 +38,55 @@ def get_or_create_group(parent: h5py.Group, name: str):
 def write_core(header: fits.Header, data: np.ndarray, outputHDF5: h5py.File, args: argparse.Namespace):
     copy_attrs = get_attr_copier(header)
     
-    syslogGroup = outputHDF5.create_group("SysLog")
+    attrs_to_copy = set(FITS_KEEP)
+    for regex in FITS_KEEP_RE:
+        attrs_to_copy |= {k for k in header if regex.search(k)}
     
+    print(attrs_to_copy)
+    
+    # TODO: pass this in as a parameter
+    hduGroup = get_or_create_group(outputHDF5, "Primary")
+    
+    copy_attrs(hduGroup, attrs_to_copy)
+
+    # TODO: turn into datasets
     if 'HISTORY' in header:
-        syslogGroup.attrs.create('HISTORY', [np.string_(val) for val in header['HISTORY']])
+        hduGroup.attrs.create('HISTORY', [np.string_(val) for val in header['HISTORY']])
         
     if 'COMMENT' in header:
-        syslogGroup.attrs.create('COMMENT', [np.string_(val) for val in header['COMMENT']])
-
-    currentGroup = get_or_create_group(outputHDF5, "Image")
-    
-    coordinatesGroup = currentGroup.create_group("Coordinates")
-    
-    directionCoordinatesGroup = coordinatesGroup.create_group("DirectionCoordinates")
-    copy_attrs(directionCoordinatesGroup, ['CTYPE1', 'CUINIT1', 'CTYPE2', 'CUINIT2', 'RADESYS'])
-    copy_attrs(directionCoordinatesGroup, ['CRVAL1', 'CRPIX1', 'CDELT1', 'CROTA1', 'CRVAL2', 'CRPIX2', 'CDELT2', 'CROTA2', 'EQUINOX'])
-
-    spectralCoordinatesGroup = coordinatesGroup.create_group("SpectralCoordinate")
-    copy_attrs(spectralCoordinatesGroup, ['CTYPE3', 'CUINIT3'])
-    copy_attrs(spectralCoordinatesGroup, ['CRVAL3', 'CRPIX3', 'CDELT3', 'CROTA3'])
-
-    polarizationCoordinateGroup = coordinatesGroup.create_group("PolarizationCoordinate")
-    polarizationCoordinateGroup.attrs.create('MultiStokes', False)
-    if args.stokes:
-        polarizationCoordinateGroup.attrs.create('StokesCoordinates', convert(args.stokes))
-
-    sourceTableGroup = currentGroup.create_group("SourceTable")
-    copy_attrs(sourceTableGroup, ['TELE', 'OBSERVER', 'INSTR', 'DATE-OBS', 'TIMESYS'])
-    copy_attrs(sourceTableGroup, ['OBSRA', 'OBSDEC', 'OBSGEO-X', 'OBSGEO-Y', 'OBSGEO-Z'])
-
-    # Currently unused?
-    processingHistoryGroup = currentGroup.create_group("ProcessingHistory")
+        hduGroup.attrs.create('COMMENT', [np.string_(val) for val in header['COMMENT']])
     
     if args.chunks:
-        dataSet = currentGroup.create_dataset("Data", dims, dtype='f4', data=data, chunks=tuple(args.chunks))
+        dataSet = hduGroup.create_dataset("DATA", dims, dtype='f4', data=data, chunks=tuple(args.chunks))
     else:
-        dataSet = currentGroup.create_dataset("Data", dims, dtype='f4', data=data)
+        dataSet = hduGroup.create_dataset("DATA", dims, dtype='f4', data=data)
 
-    copy_attrs(dataSet, ['BUNIT'])
-
-    if args.stokes:
-        dataSet.attrs.create('Stokes', convert(args.stokes))
-
+# TODO more OOP and factor out common stats writing code
 
 def write_statistics(header: fits.Header, data: np.ndarray, outputHDF5: h5py.File, args: argparse.Namespace):
     dims = data.shape
+    Z = dims[0]
+    N = int(np.sqrt(dims[1] * dims[2]))
     
-    # CALCULATE
-
     percentiles = np.array([0.001, 0.01, 0.05, 0.1, 0.5, 1.0, 5.0, 10.0, 50.0, 90.0, 95.0, 99.0, 99.5, 99.9, 99.95, 99.99, 99.999])
 
-    means = np.zeros(dims[0] + 1)
-    minVals = np.zeros(dims[0] + 1)
-    maxVals = np.zeros(dims[0] + 1)
-    nanCounts = np.zeros(dims[0] + 1)
+    # CALCULATE
+
+    means = np.zeros(Z)
+    minVals = np.zeros(Z)
+    maxVals = np.zeros(Z)
+    nanCounts = np.zeros(Z)
 
     averageData = np.zeros(dims[1:])
     averageCount = np.zeros(dims[1:])
 
-    percentileVals = np.zeros([dims[0] + 1, len(percentiles)])
-    N = int(np.sqrt(dims[1] * dims[2]))
-    histogramBins = np.zeros([dims[0] + 1, N])
-    histogramFirstBinCenters = np.zeros(dims[0] + 1)
-    histogramBinWidths = np.zeros(dims[0] + 1)
+    percentileVals = np.zeros([Z, len(percentiles)])
+    
+    histogramBins = np.zeros([Z, N])
+    histogramFirstBinCenters = np.zeros(Z)
+    histogramBinWidths = np.zeros(Z)
 
-    for i in range(dims[0]):
+    for i in range(Z):
         tmpData = data[i, :, :]
         nanArray = np.isnan(tmpData)
         nanCounts[i] = np.count_nonzero(nanArray)
@@ -120,48 +111,70 @@ def write_statistics(header: fits.Header, data: np.ndarray, outputHDF5: h5py.Fil
 
             averageCount += (~nanArray).astype(int)
             averageData += np.nan_to_num(tmpData)
-
-    averageData /= np.fmax(averageCount, 1)
-    averageData[averageCount < 1] = np.NaN
-    averageDataNaNFixed = averageData[~np.isnan(averageData)]
-    means[dims[0]] = np.mean(averageDataNaNFixed)
-    minVals[dims[0]] = np.min(averageDataNaNFixed)
-    maxVals[dims[0]] = np.max(averageDataNaNFixed)
-    nanCounts[dims[0]] = np.count_nonzero(np.isnan(averageData))
-    percentileVals[dims[0], :] = np.percentile(averageDataNaNFixed, percentiles)
-    (tmpBins, tmpEdges) = np.histogram(averageDataNaNFixed, N)
-    histogramBins[dims[0], :] = tmpBins
-    histogramBinWidths[dims[0]] = tmpEdges[1] - tmpEdges[0]
-    histogramFirstBinCenters[dims[0]] = (tmpEdges[0] + tmpEdges[1]) / 2.0
     
-    # WRITE
+    # WRITE STATISTICS FOR MAIN DATASET
+    
+    # TODO: pass this in as a parameter
+    hduGroup = get_or_create_group(outputHDF5, "Primary")
         
-    copy_attrs = get_attr_copier(header)
-
-    statsGroup = outputHDF5.create_group("Statistics")
-
-    statsGroup.create_dataset("Means", [dims[0] + 1], dtype='f4', data=means)
-    statsGroup.create_dataset("MinVals", [dims[0] + 1], dtype='f4', data=minVals)
-    statsGroup.create_dataset("MaxVals", [dims[0] + 1], dtype='f4', data=maxVals)
-    statsGroup.create_dataset("NaNCounts", [dims[0] + 1], dtype='i4', data=nanCounts)
+    allStatsGroup = hduGroup.create_group("Statistics")
+    statsGroup = allStatsGroup.create_group("StatisticsXY")
+    
+    statsGroup.create_dataset("MEANS", [Z], dtype='f4', data=means)
+    statsGroup.create_dataset("MIN_VALS", [Z], dtype='f4', data=minVals)
+    statsGroup.create_dataset("MAX_VALS", [Z], dtype='f4', data=maxVals)
+    statsGroup.create_dataset("NAN_COUNTS", [Z], dtype='i4', data=nanCounts)
 
     histGroup = statsGroup.create_group("Histograms")
-    histGroup.create_dataset("FirstCenters", [dims[0] + 1], dtype='f4', data=histogramFirstBinCenters)
-    histGroup.create_dataset("BinWidths", [dims[0] + 1], dtype='f4', data=histogramBinWidths)
-    histGroup.create_dataset("Bins", [dims[0] + 1, N], dtype='i4', data=histogramBins)
+    histGroup.create_dataset("FIRST_CENTERS", [Z], dtype='f4', data=histogramFirstBinCenters)
+    histGroup.create_dataset("BIN_WIDTHS", [Z], dtype='f4', data=histogramBinWidths)
+    histGroup.create_dataset("BINS", [Z, N], dtype='i4', data=histogramBins)
 
     percentileGroup = statsGroup.create_group("Percentiles")
-    percentileGroup.create_dataset("Percentiles", [len(percentiles)], dtype='f4', data=percentiles)
-    percentileGroup.create_dataset("Values", [dims[0] + 1, len(percentiles)], dtype='f4', data=percentileVals)
+    percentileGroup.create_dataset("PERCENTILES", [len(percentiles)], dtype='f4', data=percentiles)
+    percentileGroup.create_dataset("VALUES", [Z, len(percentiles)], dtype='f4', data=percentileVals)
     
-    currentGroup = get_or_create_group(outputHDF5, "Image")
-        
-    dataSetAverage = currentGroup.create_dataset("AverageData", dims[1:], dtype='f4', data=averageData)
+    # WRITE AVERAGE_DATA_Z
+    
+    averageData /= np.fmax(averageCount, 1)
+    averageData[averageCount < 1] = np.NaN
 
-    copy_attrs(dataSetAverage, ['BUNIT'])
+    averageDataGroup = hduGroup.create_group("AverageData")
+    dataSetAverageZ = averageDataGroup.create_dataset("AVERAGE_DATA_Z", dims[1:], dtype='f4', data=averageData)
+    
+    # WRITE AVERAGE_DATA_Z STATS
+    
+    averageZStatsGroup = allStatsGroup.create_group("StatisticsAverageZ")
+    
+    averageDataNaNFixed = averageData[~np.isnan(averageData)]
+    means_avg_z = np.mean(averageDataNaNFixed)
+    minVals_avg_z = np.min(averageDataNaNFixed)
+    maxVals_avg_z = np.max(averageDataNaNFixed)
+    
+    nanCounts_avg_z = np.count_nonzero(np.isnan(averageData))
+    
+    percentileVals_avg_z = np.percentile(averageDataNaNFixed, percentiles)
+    
+    (tmpBins, tmpEdges) = np.histogram(averageDataNaNFixed, N)
+    histogramBins_avg_z = tmpBins
+    histogramBinWidths_avg_z = tmpEdges[1] - tmpEdges[0]
+    histogramFirstBinCenters_avg_z = (tmpEdges[0] + tmpEdges[1]) / 2.0
+    
+    # TODO: this all needs to be factored out
+    
+    averageZStatsGroup.create_dataset("MEANS", [1], dtype='f4', data=means_avg_z)
+    averageZStatsGroup.create_dataset("MIN_VALS", [1], dtype='f4', data=minVals_avg_z)
+    averageZStatsGroup.create_dataset("MAX_VALS", [1], dtype='f4', data=maxVals_avg_z)
+    averageZStatsGroup.create_dataset("NAN_COUNTS", [1], dtype='i4', data=nanCounts_avg_z)
 
-    if args.stokes:
-        dataSetAverage.attrs.create('Stokes', convert(args.stokes))
+    averageZhistGroup = averageZStatsGroup.create_group("Histograms")
+    averageZhistGroup.create_dataset("FIRST_CENTERS", [1], dtype='f4', data=histogramFirstBinCenters_avg_z)
+    averageZhistGroup.create_dataset("BIN_WIDTHS", [1], dtype='f4', data=histogramBinWidths_avg_z)
+    averageZhistGroup.create_dataset("BINS", [1, N], dtype='i4', data=histogramBins_avg_z)
+
+    averageZpercentileGroup = averageZStatsGroup.create_group("Percentiles")
+    averageZpercentileGroup.create_dataset("PERCENTILES", [len(percentiles)], dtype='f4', data=percentiles)
+    averageZpercentileGroup.create_dataset("VALUES", [1, len(percentiles)], dtype='f4', data=percentileVals_avg_z)
 
 
 if __name__ == '__main__':
