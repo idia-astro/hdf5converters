@@ -2,6 +2,7 @@
 from astropy.io import fits
 import h5py
 import numpy as np
+import warnings
 import sys
 from typing import Sequence, Callable
 import argparse
@@ -41,9 +42,7 @@ def write_core(header: fits.Header, data: np.ndarray, outputHDF5: h5py.File, arg
     attrs_to_copy = set(FITS_KEEP)
     for regex in FITS_KEEP_RE:
         attrs_to_copy |= {k for k in header if regex.search(k)}
-    
-    print(attrs_to_copy)
-    
+        
     # TODO: pass this in as a parameter
     hduGroup = get_or_create_group(outputHDF5, "Primary")
     
@@ -63,7 +62,7 @@ def write_core(header: fits.Header, data: np.ndarray, outputHDF5: h5py.File, arg
 
 # TODO more OOP and factor out common stats writing code
 
-def write_statistics(header: fits.Header, data: np.ndarray, outputHDF5: h5py.File, args: argparse.Namespace):
+def get_statistics(data):
     dims = data.shape
     Z = dims[0]
     N = int(np.sqrt(dims[1] * dims[2]))
@@ -72,15 +71,15 @@ def write_statistics(header: fits.Header, data: np.ndarray, outputHDF5: h5py.Fil
 
     # CALCULATE
 
-    means = np.zeros(Z)
-    minVals = np.zeros(Z)
-    maxVals = np.zeros(Z)
+    #means = np.zeros(Z)
+    #minVals = np.zeros(Z)
+    #maxVals = np.zeros(Z)
     nanCounts = np.zeros(Z)
 
-    averageData = np.zeros(dims[1:])
+    #averageData = np.zeros(dims[1:])
     averageCount = np.zeros(dims[1:])
 
-    percentileVals = np.zeros([Z, len(percentiles)])
+    #percentileVals = np.zeros([Z, len(percentiles)])
     
     histogramBins = np.zeros([Z, N])
     histogramFirstBinCenters = np.zeros(Z)
@@ -92,25 +91,61 @@ def write_statistics(header: fits.Header, data: np.ndarray, outputHDF5: h5py.Fil
         nanCounts[i] = np.count_nonzero(nanArray)
         tmpDataNanFixed = tmpData[~nanArray]
         if nanCounts[i] == tmpData.shape[0] * tmpData.shape[1]:
-            means[i] = np.NaN
-            minVals[i] = np.NaN
-            maxVals[i] = np.NaN
-            percentileVals[i, :] = np.NaN
+            #means[i] = np.NaN
+            #minVals[i] = np.NaN
+            #maxVals[i] = np.NaN
+            #percentileVals[i, :] = np.NaN
             histogramBins[i, :] = np.NaN
             histogramBinWidths[i] = np.NaN
             histogramFirstBinCenters[i] = np.NaN
         else:
-            means[i] = np.mean(tmpDataNanFixed)
-            minVals[i] = np.min(tmpDataNanFixed)
-            maxVals[i] = np.max(tmpDataNanFixed)
-            percentileVals[i, :] = np.percentile(tmpDataNanFixed, percentiles)
+            #means[i] = np.mean(tmpDataNanFixed)
+            #minVals[i] = np.min(tmpDataNanFixed)
+            #maxVals[i] = np.max(tmpDataNanFixed)
+            #percentileVals[i, :] = np.percentile(tmpDataNanFixed, percentiles)
             (tmpBins, tmpEdges) = np.histogram(tmpDataNanFixed, N)
             histogramBins[i, :] = tmpBins
             histogramBinWidths[i] = tmpEdges[1] - tmpEdges[0]
             histogramFirstBinCenters[i] = (tmpEdges[0] + tmpEdges[1]) / 2.0
 
-            averageCount += (~nanArray).astype(int)
-            averageData += np.nan_to_num(tmpData)
+            #averageCount += (~nanArray).astype(int)
+            #averageData += np.nan_to_num(tmpData)
+            
+    #averageData /= np.fmax(averageCount, 1)
+    #averageData[averageCount < 1] = np.NaN
+
+    # NEW VECTORISED CODE
+    
+    print(histogramBins)
+    print(histogramBinWidths)
+    print(histogramFirstBinCenters)
+        
+    # TODO no vectorised histogram function; can we do something clever?
+        
+    with warnings.catch_warnings():
+        # nanmean prints a warning for empty slices, i.e. planes full of nans, but gives the correct answer (nan).
+        warnings.simplefilter("ignore", category=RuntimeWarning)
+        means = np.nanmean(data, axis=(1, 2))
+        minVals = np.nanmin(data, axis=(1, 2))
+        maxVals = np.nanmax(data, axis=(1, 2))
+        percentileVals = np.nanpercentile(data, percentiles, axis=(1, 2)).transpose() # TODO test with other axes; see if transposing is always the right thing to do
+        
+    nanCounts = np.count_nonzero(np.isnan(data), axis=(1, 2))
+    averageData = np.nanmean(data, axis=0)
+                    
+    return means, minVals, maxVals, nanCounts, averageData, averageCount, percentileVals, histogramBins, histogramFirstBinCenters, histogramBinWidths
+    
+
+def write_statistics(header: fits.Header, data: np.ndarray, outputHDF5: h5py.File, args: argparse.Namespace):
+    dims = data.shape
+    Z = dims[0]
+    N = int(np.sqrt(dims[1] * dims[2]))
+    
+    percentiles = np.array([0.001, 0.01, 0.05, 0.1, 0.5, 1.0, 5.0, 10.0, 50.0, 90.0, 95.0, 99.0, 99.5, 99.9, 99.95, 99.99, 99.999])
+
+    # CALCULATE
+            
+    means, minVals, maxVals, nanCounts, averageData, averageCount, percentileVals, histogramBins, histogramFirstBinCenters, histogramBinWidths = get_statistics(data)
     
     # WRITE STATISTICS FOR MAIN DATASET
     
@@ -136,9 +171,6 @@ def write_statistics(header: fits.Header, data: np.ndarray, outputHDF5: h5py.Fil
     
     # WRITE AVERAGE_DATA_Z
     
-    averageData /= np.fmax(averageCount, 1)
-    averageData[averageCount < 1] = np.NaN
-
     averageDataGroup = hduGroup.create_group("AverageData")
     dataSetAverageZ = averageDataGroup.create_dataset("AVERAGE_DATA_Z", dims[1:], dtype='f4', data=averageData)
     
@@ -182,7 +214,16 @@ if __name__ == '__main__':
     parser.add_argument('filename', help='Input filename')
     parser.add_argument('--chunks', nargs=3, type=int, help='Chunks to use, order: Z Y X')
     parser.add_argument('--stokes', help='Stokes parameter to assign', default='')
+    parser.add_argument('--test', help='Run test and exit', action='store_true')
     args = parser.parse_args()
+    
+    if args.test:
+        data = np.random.random(size=(5, 10, 15))
+        data[data < 0.1] = np.nan
+        data[0,:,:] = np.nan
+        
+        get_statistics(data)
+        sys.exit()
     
     if args.stokes:
         print('Using Stokes parameter {}.'.format(args.stokes))
