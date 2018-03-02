@@ -3,7 +3,6 @@ from astropy.io import fits
 import h5py
 import numpy as np
 import warnings
-import sys
 import argparse
 import os
 import re
@@ -19,8 +18,9 @@ class DataSet:
         self.axes = axes        
         self.data = data
     
+    # TODO axes object
     # TODO I don't think we actually need this
-    #def axis_name(axis_numeric):
+    #def axis_name(self, axis_numeric):
         #"""Convert numeric axes to named axes, relative to this dataset
             #e.g. if axes are XYZW, 1 -> Z, (2, 3) -> XY
         #"""
@@ -29,7 +29,7 @@ class DataSet:
         
         #return "".join(sorted(reversed(self.axes)[d] for d in axis_numeric))
         
-    def axis_numeric(axis_name):
+    def axis_numeric(self, axis_name):
         """Convert named axes to numeric axes, relative to this dataset
             e.g. if axes are XYZW, Z -> 1, XY -> (2, 3)
         """
@@ -40,7 +40,7 @@ class DataSet:
         
         return axis_numeric
     
-    def write_statistics(self, hdu_group, data, axis_name):
+    def write_statistics(self, hdu_group, axis_name):
         stats = hdu_group.require_group("Statistics/%s/%s" % (self.name, axis_name))
         
         axis = self.axis_numeric(axis_name)
@@ -48,11 +48,11 @@ class DataSet:
         with warnings.catch_warnings():
             # nanmean prints a warning for empty slices, i.e. planes full of nans, but gives the correct answer (nan).
             warnings.simplefilter("ignore", category=RuntimeWarning)
-            stats.create_dataset("MEANS", np.nanmean(data, axis=axis))
-            stats.create_dataset("MIN_VALS", np.nanmin(data, axis=axis))
-            stats.create_dataset("MAX_VALS", np.nanmax(data, axis=axis))
+            stats.create_dataset("MEANS", np.nanmean(self.data, axis=axis))
+            stats.create_dataset("MIN_VALS", np.nanmin(self.data, axis=axis))
+            stats.create_dataset("MAX_VALS", np.nanmax(self.data, axis=axis))
             
-        stats.create_dataset("NAN_COUNTS", np.count_nonzero(np.isnan(data), axis=axis))
+        stats.create_dataset("NAN_COUNTS", np.count_nonzero(np.isnan(self.data), axis=axis))
         
     #def write_histogram(self, path, data, axis):
         ## TODO make this generic; able to work with any data and axis
@@ -105,9 +105,9 @@ class DataSet:
         
         # write statistics
         for axis_name in statistics_axes:
-            self.write_statistics(hdu_group, data, axis_name)
-            #self.write_histogram(hdu_group, data, axis_name)
-            #self.write_percentiles(hdu_group, data, axis_name)
+            self.write_statistics(hdu_group, axis_name)
+            #self.write_histogram(hdu_group, axis_name)
+            #self.write_percentiles(hdu_group, axis_name)
 
 
 class HDUGroup:
@@ -139,17 +139,17 @@ class HDUGroup:
         hdu_group = hdf5file.require_group(self.name)
         
         # Copy attributes from header
-        attrs_to_copy = set(FITS_KEEP)
-        for regex in FITS_KEEP_RE:
-            attrs_to_copy |= {k for k in header if regex.search(k)}
+        attrs_to_copy = set(self.FITS_KEEP)
+        for regex in self.FITS_KEEP_RE:
+            attrs_to_copy |= {k for k in self.header if regex.search(k)}
         
         self.copy_attrs(hdu_group, attrs_to_copy)
 
         if 'HISTORY' in self.header:
-            hdu_group.create_dataset('HISTORY', [np.string_(val) for val in header['HISTORY']])
+            hdu_group.create_dataset('HISTORY', [np.string_(val) for val in self.header['HISTORY']])
             
         if 'COMMENT' in self.header:
-            hdu_group.create_dataset('COMMENT', [np.string_(val) for val in header['COMMENT']])
+            hdu_group.create_dataset('COMMENT', [np.string_(val) for val in self.header['COMMENT']])
             
         # TODO get the actual axes out of the header
         main_dataset = DataSet(self.data, "XYZW")
@@ -195,6 +195,6 @@ if __name__ == '__main__':
     else:
         outputFileName = baseFileName + ".hdf5"
         
-    with Converter(inputFileName, outputFileName) as converter:
+    with Converter(args.filename, outputFileName) as converter:
         converter.convert(args)
     
