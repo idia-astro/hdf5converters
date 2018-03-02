@@ -9,7 +9,9 @@ import re
 
 # helper class storing state for an original or swizzled dataset
 class DataSet:
-    def __init__(self, data, axes, swizzled=False):
+    def __init__(self, hdu_group, data, axes, swizzled=False):
+        self.hdu_group = hdu_group
+        
         if swizzled:
             self.name = "DATA_" + axes
         else:
@@ -41,9 +43,8 @@ class DataSet:
         
         return axis_numeric
     
-    def write_statistics(self, hdu_group, axis_name):
-        stats = hdu_group.require_group("Statistics/%s/%s" % (self.name, axis_name))
-        
+    def write_statistics(self, axis_name):
+        stats = self.hdu_group.require_group("Statistics/%s/%s" % (self.name, axis_name))
         axis = self.axis_numeric(axis_name)
         
         with warnings.catch_warnings():
@@ -55,60 +56,59 @@ class DataSet:
             
         stats.create_dataset("NAN_COUNT", data=np.count_nonzero(np.isnan(self.data), axis=axis))
         
-    #def write_histogram(self, path, data, axis):
-        ## TODO make this generic; able to work with any data and axis
-        ## TODO CURRENTLY UNTESTED for 4D
+    def write_histogram(self, axis_name):
+        stats = self.hdu_group.require_group("Statistics/%s/%s" % (self.name, axis_name))
+        axis = self.axis_numeric(axis_name)
+        
+        dims = data.shape
+        N = np.sqrt(np.multiply.reduce([dims[a] for a in axis]))
+        
+        # TODO now use a recursive function (?)
+                
         #dims = data.shape
         #W = dims[0]
         #Z = dims[1]
         #N = int(np.sqrt(dims[2] * dims[3]))
         
         #bins = np.zeros([W, Z, N])
-        #edges = np.zeros([2, W, Z])
         
         #for j in range(W):
             #for i in range(Z):
                 #data_slice = data[j, i, :, :]
                 #data_notnan = data_slice[~np.isnan(data_slice)]
                 #if data_notnan.size:
-                    #b, e = np.histogram(data_notnan, N)
+                    #b, _ = np.histogram(data_notnan, N)
                     #bins[j, i, :] = b
-                    #edges[:, j, i] = e[:2]
                 #else:
                     #bins[j, i, :] = np.nan
-                    #edges[:, j, i] = np.nan
-        
-        #widths = edges[1] - edges[0]
-        #first_centers = (edges[0] + edges[1]) / 2
-        
-        #path = path + "/Histograms"
-        
-        #self.write_data(path, "BINS", bins)
-        #self.write_data(path, "BIN_WIDTHS", widths)
-        #self.write_data(path, "FIRST_CENTERS", first_centers)
+
+
+        stats.create_dataset("HISTOGRAM", bins)
     
     #def write_percentiles(self, path, data, axis):
-        #percentiles = np.array([0.001, 0.01, 0.05, 0.1, 0.5, 1.0, 5.0, 10.0, 50.0, 90.0, 95.0, 99.0, 99.5, 99.9, 99.95, 99.99, 99.999])
+        percentiles = np.array([0.001, 0.01, 0.05, 0.1, 0.5, 1.0, 5.0, 10.0, 50.0, 90.0, 95.0, 99.0, 99.5, 99.9, 99.95, 99.99, 99.999])
+        self.hdu_group.create_dataset("PERCENTILE_RANKS", percentiles)
+        
+        stats = self.hdu_group.require_group("Statistics/%s/%s" % (self.name, axis_name))
+        
+        # TODO rewrite this
         
         #with warnings.catch_warnings():
             ## nanmean prints a warning for empty slices, i.e. planes full of nans, but gives the correct answer (nan).
             #warnings.simplefilter("ignore", category=RuntimeWarning)
             #percentile_values = np.nanpercentile(data, percentiles, axis=axis).transpose() # TODO test with other axes; see if transposing is always the right thing to do
-            
-        #path = path + "/Percentiles"
-            
-        #self.write_data(path, "PERCENTILES", percentiles)
-        #self.write_data(path, "VALUES", percentile_values)
+        
+        stats.create_dataset("PERCENTILES", percentile_values)
     
-    def write(self, hdu_group, statistics_axes, chunks):        
+    def write(self, statistics_axes, chunks):        
         # write this dataset
-        hdu_group.create_dataset(self.name, data=self.data, chunks=tuple(chunks) if chunks else None)
+        self.hdu_group.create_dataset(self.name, data=self.data, chunks=tuple(chunks) if chunks else None)
         
         # write statistics
         for axis_name in statistics_axes:
-            self.write_statistics(hdu_group, axis_name)
-            #self.write_histogram(hdu_group, axis_name)
-            #self.write_percentiles(hdu_group, axis_name)
+            self.write_statistics(axis_name)
+            #self.write_histogram(axis_name)
+            #self.write_percentiles(axis_name)
 
 
 class HDUGroup:
@@ -121,7 +121,8 @@ class HDUGroup:
         re.compile('^NAXIS\d*')
     )
     
-    def __init__(self, name, fits_hdu):
+    def __init__(self, hdf5file, name, fits_hdu):
+        self.hdf5file = hdf5file
         self.name = name
         self.data = fits_hdu.data
         self.header = fits_hdu.header
@@ -157,9 +158,9 @@ class HDUGroup:
         # TODO: this is good enough for now, but we should look for a more robust way to detect the order
         axes = "XYZW"[:num_axes]
         
-        main_dataset = DataSet(self.data, axes)
+        main_dataset = DataSet(hdu_group, self.data, axes)
         
-        main_dataset.write(hdu_group, statistics_axes=statistics_axes, chunks=chunks)
+        main_dataset.write(statistics_axes=statistics_axes, chunks=chunks)
         
         # TODO: swizzles
 
