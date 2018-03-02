@@ -6,6 +6,7 @@ import warnings
 import argparse
 import os
 import re
+import itertools
 
 # helper class storing state for an original or swizzled dataset
 class DataSet:
@@ -20,28 +21,12 @@ class DataSet:
         self.axes = axes
         self._reverse_axes = list(reversed(axes))
         self.data = data
-    
-    # TODO axes object
-    # TODO I don't think we actually need this
-    #def axis_name(self, axis_numeric):
-        #"""Convert numeric axes to named axes, relative to this dataset
-            #e.g. if axes are XYZW, 1 -> Z, (2, 3) -> XY
-        #"""
-        #if isinstance(axis_numeric, int):
-            #axis_numeric = (axis_numeric,)
-        
-        #return "".join(sorted(self._reverse_axes[d] for d in axis_numeric))
         
     def axis_numeric(self, axis_name):
         """Convert named axes to numeric axes, relative to this dataset
             e.g. if axes are XYZW, Z -> 1, XY -> (2, 3)
         """
-        axis_numeric = tuple(sorted(self._reverse_axes.index(l) for l in axis_name))
-        
-        if len(axis_numeric) == 1:
-            return axis_numeric[0]
-        
-        return axis_numeric
+        return tuple(sorted(self._reverse_axes.index(l) for l in axis_name))
     
     def write_statistics(self, axis_name):
         stats = self.hdu_group.require_group("Statistics/%s/%s" % (self.name, axis_name))
@@ -60,45 +45,62 @@ class DataSet:
         stats = self.hdu_group.require_group("Statistics/%s/%s" % (self.name, axis_name))
         axis = self.axis_numeric(axis_name)
         
-        dims = data.shape
-        N = np.sqrt(np.multiply.reduce([dims[a] for a in axis]))
+        shape = self.data.shape
+        ndim = self.data.ndim
         
-        # TODO now use a recursive function (?)
+        data_size = np.multiply.reduce([shape[d] for d in axis])
+        
+        if data_size == 1:
+            print("Not calculating histogram for %s dataset averaged along %s: data size of 1." % (self.axes, axis))
+            return
+        
+        N = int(np.sqrt(data_size))
+        not_axis = [d for d in range(ndim) if d not in axis]
+        data_index = [slice(None)] * ndim
+        
+        bins = np.zeros([shape[d] for d in not_axis] + [N])
+        bin_index = [slice(None)] * bins.ndim
+        
+        for iterdims in itertools.product(*(range(shape[d]) for d in not_axis)):
+            for d, v in zip(not_axis, iterdims):
+                data_index[d] = v
                 
-        #dims = data.shape
-        #W = dims[0]
-        #Z = dims[1]
-        #N = int(np.sqrt(dims[2] * dims[3]))
-        
-        #bins = np.zeros([W, Z, N])
-        
-        #for j in range(W):
-            #for i in range(Z):
-                #data_slice = data[j, i, :, :]
-                #data_notnan = data_slice[~np.isnan(data_slice)]
-                #if data_notnan.size:
-                    #b, _ = np.histogram(data_notnan, N)
-                    #bins[j, i, :] = b
-                #else:
-                    #bins[j, i, :] = np.nan
+            for d, v in enumerate(iterdims):
+                bin_index[d] = v
+                    
+            data_slice = self.data[tuple(data_index)]
+            data_notnan = data_slice[~np.isnan(data_slice)]
+            
+            if data_notnan.size:
+                b, _ = np.histogram(data_notnan, N)
+                bins[tuple(bin_index)] = b
+            else:
+                bins[tuple(bin_index)] = np.nan
 
-
-        stats.create_dataset("HISTOGRAM", bins)
+        stats.create_dataset("HISTOGRAM", data=bins)
     
-    #def write_percentiles(self, path, data, axis):
+    def write_percentiles(self, axis_name):
         percentiles = np.array([0.001, 0.01, 0.05, 0.1, 0.5, 1.0, 5.0, 10.0, 50.0, 90.0, 95.0, 99.0, 99.5, 99.9, 99.95, 99.99, 99.999])
-        self.hdu_group.create_dataset("PERCENTILE_RANKS", percentiles)
+        
+        if "PERCENTILE_RANKS" not in self.hdu_group:
+            self.hdu_group.create_dataset("PERCENTILE_RANKS", percentiles)
         
         stats = self.hdu_group.require_group("Statistics/%s/%s" % (self.name, axis_name))
+        axis = self.axis_numeric(axis_name)
         
-        # TODO rewrite this
+        data_size = np.multiply.reduce([self.data.shape[d] for d in axis])
         
-        #with warnings.catch_warnings():
-            ## nanmean prints a warning for empty slices, i.e. planes full of nans, but gives the correct answer (nan).
-            #warnings.simplefilter("ignore", category=RuntimeWarning)
-            #percentile_values = np.nanpercentile(data, percentiles, axis=axis).transpose() # TODO test with other axes; see if transposing is always the right thing to do
+        if data_size == 1:
+            print("Not calculating percentiles for %s dataset averaged along %s: data size of 1." % (self.axes, axis))
+            return
+                
+        with warnings.catch_warnings():
+            # nanmean prints a warning for empty slices, i.e. planes full of nans, but gives the correct answer (nan).
+            warnings.simplefilter("ignore", category=RuntimeWarning)
+            # TODO TODO TODO test with other axes; see if transposing is always the right thing to do
+            percentile_values = np.nanpercentile(self.data, percentiles, axis=axis).transpose() 
         
-        stats.create_dataset("PERCENTILES", percentile_values)
+        stats.create_dataset("PERCENTILES", data=percentile_values)
     
     def write(self, statistics_axes, chunks):        
         # write this dataset
@@ -107,8 +109,8 @@ class DataSet:
         # write statistics
         for axis_name in statistics_axes:
             self.write_statistics(axis_name)
-            #self.write_histogram(axis_name)
-            #self.write_percentiles(axis_name)
+            self.write_histogram(axis_name)
+            self.write_percentiles(axis_name)
 
 
 class HDUGroup:
@@ -148,10 +150,10 @@ class HDUGroup:
         self.copy_attrs(hdu_group, attrs_to_copy)
 
         if 'HISTORY' in self.header:
-            hdu_group.create_dataset('HISTORY', [np.string_(val) for val in self.header['HISTORY']])
+            hdu_group.create_dataset('HISTORY', data=[np.string_(val) for val in self.header['HISTORY']])
             
         if 'COMMENT' in self.header:
-            hdu_group.create_dataset('COMMENT', [np.string_(val) for val in self.header['COMMENT']])
+            hdu_group.create_dataset('COMMENT', data=[np.string_(val) for val in self.header['COMMENT']])
             
         num_axes = self.header["NAXIS"]
         
@@ -183,7 +185,7 @@ class Converter:
     def convert(self, args):
         # TODO: iterate over all the HDUs -- how do we pick the names?
         # TODO: some HDUs are just tables.
-        primary = HDUGroup("Primary", self.fits[0])
+        primary = HDUGroup(self.hdf5, "Primary", self.fits[0])
         primary.write(self.hdf5, statistics_axes=args.statistics_axes, chunks=args.chunks)
 
 
@@ -192,7 +194,7 @@ if __name__ == '__main__':
     parser.add_argument('filename', help='Input filename')
     # TODO how do we change this when we keep the 4D dataset?
     parser.add_argument('--chunks', nargs=3, type=int, help='Chunks to use, order: Z Y X')
-    parser.add_argument('--statistics-axes', nargs="+", help='Axes along which statistics should be calculated, e.g. XY, Z, XYZ')
+    parser.add_argument('--statistics-axes', nargs="+", help='Axes along which statistics should be calculated, e.g. XY, Z, XYZ', default=tuple())
     # TODO if we want to split out stokes, we should pass in a stokes parameter
     # TODO optional parameter to override axes?
     args = parser.parse_args()
