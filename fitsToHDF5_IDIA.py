@@ -8,6 +8,101 @@ import argparse
 import os
 import re
 
+# TODO: helper class storing state for an original or swizzled dataset
+# Parent class should not be called directly
+class Data:
+    def __init__(self, axes, average_axes, data, chunks):
+        self.path = None # not implemented
+        self.stats_path = None # not implemented
+        
+        self.axes = axes
+        self.average_axes = average_axes
+        
+        self.data = data
+        
+    def axis_name(axis_numeric):
+        """ Convert numeric axes to named axes, relative to this dataset
+            e.g. if axes are XYZW, 1 -> Z, (2, 3) -> XY
+        """
+        if isinstance(axis_numeric, int):
+            axis_numeric = (axis_numeric,)
+        
+        return "".join(sorted(reversed(self.axes)[d] for d in axis_numeric))
+        
+    def axis_numeric(axis_name):
+        """ Convert named axes to numeric axes, relative to this dataset
+            e.g. if axes are XYZW, Z -> 1, XY -> (2, 3)
+        """
+        axis_numeric = tuple(sorted(reversed(self.axes).index(l) for l in axis_name))
+        
+        if len(axis_numeric) == 1:
+            return axis_numeric[0]
+        
+        return axis_numeric
+    
+    def write_statistics(self, parent, data, axis_name):
+        axis = self.axis_numeric(axis_name)
+        
+        with warnings.catch_warnings():
+            # nanmean prints a warning for empty slices, i.e. planes full of nans, but gives the correct answer (nan).
+            warnings.simplefilter("ignore", category=RuntimeWarning)
+            parent.create_dataset("MEANS", np.nanmean(data, axis=axis))
+            parent.create_dataset("MIN_VALS", np.nanmin(data, axis=axis))
+            parent.create_dataset("MAX_VALS", np.nanmax(data, axis=axis))
+            
+        parent.create_dataset("NAN_COUNTS", np.count_nonzero(np.isnan(data), axis=axis))
+    
+    def write(self, parent, statistics_axes=None, chunks=None):
+        parent_group = self.hdf5.require_group(parent)
+        
+        # write this dataset
+        group = parent.require_group(self.path)
+        group.create_dataset(self.path, data=self.data, chunks=chunks)
+        
+        for axis_name in statistics_axes:
+            # write statistics
+            stats = parent.require_group(self.stats_path)
+            
+            self.write_statistics(stats, data, axis_name)
+            
+            # histogram
+            # percentiles
+            
+    def write_average(self, parent, average_axis, statistics_axes=None):
+        # we need to pass in the mean data
+        # but then we need to collapse the axes -- TODO!
+        average_axis_numeric = self.axis_numeric(average_axis)
+        average_data = AverageData(self.axes, average_axes, np.nanmean(self.data, axis=average_axis_numeric))
+        average_data.write(parent, statistics_axes) 
+
+# This can be called directly from the converter
+class OriginalData(Data):
+    def __init__(self, data):
+        super(OriginalData, self).__init__("XYZW", None, data)
+        self.path = "DATA"
+        self.stats_path = "Statistics/%s" % self.path
+
+# This can be called directly from the converter
+class SwizzledData(Data):
+    def __init__(self, axes, data):
+        super(SwizzledData, self).__init__("SwizzledData", "DATA_%s" % axes, axes, None, data)
+        self.path = "DATA_%s" % axes
+        self.stats_path = "Statistics/%s" % self.path
+        
+# This should be only created from the original or swizzled dataset object, not called separately from the constructor
+class AverageData(Data):
+    def __init__(self, axes, average_axes, data):
+        super(AverageData, self).__init__(axes, average_axes, data)
+        if axes == "XYZW": # average of original
+            source = "DATA"
+        else: # average of swizzled
+            source = "DATA_%s" % axes
+            
+        self.path = "AverageData/%s/%s" % (source, average_axes)
+        self.stats_path = "Statistics/%s_AVG_%s"  % (source, average_axes)
+
+# TODO decide on 3D vs 4D
+
 class Converter:
     # FITS header attributes to keep (exact names)
     FITS_KEEP = ('BUNIT', 'DATE-OBS', 'EQUINOX', 'INSTR', 'OBSDEC', 'OBSERVER', 'OBSGEO-X', 'OBSGEO-Y', 'OBSGEO-Z', 'OBSRA', 'RADESYS', 'TELE', 'TIMESYS')
@@ -16,7 +111,7 @@ class Converter:
     FITS_KEEP_RE = (
         re.compile('^(CDELT|CROTA|CRPIX|CRVAL|CTYPE|CUNIT)\d+'),
     )
-    
+        
     def __init__(self, fitsname, hdf5name):
         self.fitsname = fitsname
         self.hdf5name = hdf5name
@@ -29,18 +124,20 @@ class Converter:
         dims = data.shape
         
         if len(dims) == 4:
-            dims = dims[1:]
-            data = data[0, :, :, :]
-            
-        elif len(dims) == 2:
-            dims = (1, *dims)
-            data = data[None, :]
+            print('4D data found.')
             
         elif len(dims) == 3:
             print('3D data found.')
+            dims = (1, *dims)
+            data = data[None, :]
+            
+        elif len(dims) == 2:
+            print('2D data found.')
+            dims = (1, 1, *dims)
+            data = data[None, None :]
         
         else:
-            raise ValueError('Could not coerce data to 3D cube.')
+            raise ValueError('Could not coerce data to 4D.')
         
         print('File dims: {}'.format(dims))
         print('Chunk dims: {}'.format(args.chunks))
@@ -69,53 +166,53 @@ class Converter:
         for key in keys:
             if key in self.header:
                 group.attrs.create(key, Converter.convert(self.header[key]))
-    
-    def write_data(self, path, name, data, chunks=None):
-        group = self.hdf5.require_group(path)
-        group.require_dataset(name, data=data, chunks=chunks)
         
     def write_attr(self, path, name, attr):
         group = self.hdf5.require_group(path)
         group.attrs.create(name, attr)
     
-    def write_average_data(self, path, name, data, axis):
-        average_data = np.nanmean(data, axis=axis)
-        self.write_data(path, name, average_data)
-        return average_data
+    #def write_average_data(self, path, name, data, axis):
+        #average_data = np.nanmean(data, axis=axis)
+        #self.write_data(path, name, average_data)
+        #return average_data
     
-    def write_statistics(self, path, data, axis):
-        with warnings.catch_warnings():
-            # nanmean prints a warning for empty slices, i.e. planes full of nans, but gives the correct answer (nan).
-            warnings.simplefilter("ignore", category=RuntimeWarning)
-            means = np.nanmean(data, axis=axis)
-            min_vals = np.nanmin(data, axis=axis)
-            max_vals = np.nanmax(data, axis=axis)
+    #def write_statistics(self, path, data, axis):
+        #with warnings.catch_warnings():
+            ## nanmean prints a warning for empty slices, i.e. planes full of nans, but gives the correct answer (nan).
+            #warnings.simplefilter("ignore", category=RuntimeWarning)
+            #means = np.nanmean(data, axis=axis)
+            #min_vals = np.nanmin(data, axis=axis)
+            #max_vals = np.nanmax(data, axis=axis)
             
-        nan_counts = np.count_nonzero(np.isnan(data), axis=axis)
+        #nan_counts = np.count_nonzero(np.isnan(data), axis=axis)
         
-        self.write_data(path, "MEANS", means)
-        self.write_data(path, "MIN_VALS", min_vals)
-        self.write_data(path, "MAX_VALS", max_vals)
-        self.write_data(path, "NAN_COUNTS", nan_counts)
+        #self.write_data(path, "MEANS", means)
+        #self.write_data(path, "MIN_VALS", min_vals)
+        #self.write_data(path, "MAX_VALS", max_vals)
+        #self.write_data(path, "NAN_COUNTS", nan_counts)
             
     def write_histogram(self, path, data, axis):
         # TODO make this generic; able to work with any data and axis
+        # TODO CURRENTLY UNTESTED for 4D
         dims = data.shape
-        Z = dims[0]
-        N = int(np.sqrt(dims[1] * dims[2]))
+        W = dims[0]
+        Z = dims[1]
+        N = int(np.sqrt(dims[2] * dims[3]))
         
-        bins = np.zeros([Z, N])
-        edges = np.zeros([2, Z])
-        for i in range(Z):
-            data_slice = data[i, :, :]
-            data_notnan = data_slice[~np.isnan(data_slice)]
-            if data_notnan.size:
-                b, e = np.histogram(data_notnan, N)
-                bins[i, :] = b
-                edges[:,i] = e[:2]
-            else:
-                bins[i, :] = np.nan
-                edges[:,i] = np.nan
+        bins = np.zeros([W, Z, N])
+        edges = np.zeros([2, W, Z])
+        
+        for j in range(W):
+            for i in range(Z):
+                data_slice = data[j, i, :, :]
+                data_notnan = data_slice[~np.isnan(data_slice)]
+                if data_notnan.size:
+                    b, e = np.histogram(data_notnan, N)
+                    bins[j, i, :] = b
+                    edges[:, j, i] = e[:2]
+                else:
+                    bins[j, i, :] = np.nan
+                    edges[:, j, i] = np.nan
         
         widths = edges[1] - edges[0]
         first_centers = (edges[0] + edges[1]) / 2
@@ -160,16 +257,17 @@ class Converter:
         # TODO: pass in averages, mipmaps, swizzles to calculate on commandline
         # TODO: calculate subgroups automatically from data and axis
         # TODO: submethods should also know to write to Statistics
+        # TODO: axes should be calculated automatically
         
-        self.write_percentiles("Primary/Statistics/DATA/XY", self.data, (1, 2))
-        self.write_histogram("Primary/Statistics/DATA/XY", self.data, (1, 2))
-        self.write_statistics("Primary/Statistics/DATA/XY", self.data, (1, 2))
+        self.write_percentiles("Primary/Statistics/DATA/XY", self.data, (2, 3))
+        self.write_histogram("Primary/Statistics/DATA/XY", self.data, (2, 3))
+        self.write_statistics("Primary/Statistics/DATA/XY", self.data, (2, 3))
         
         # AVERAGE DATA
         
         # TODO again, most of the path should be generated automatically
         
-        average_data_Z = self.write_average_data("Primary/AverageData/DATA", "Z", self.data, 0)
+        average_data_Z = self.write_average_data("Primary/AverageData/DATA", "Z", self.data, 1)
         
         # TODO TODO TODO statistics for average data
         
