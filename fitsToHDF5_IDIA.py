@@ -29,8 +29,15 @@ class DataSet:
         return tuple(sorted(self._reverse_axes.index(l) for l in axis_name))
     
     def write_statistics(self, axis_name):
-        stats = self.hdu_group.require_group("Statistics/%s/%s" % (self.name, axis_name))
         axis = self.axis_numeric(axis_name)
+        
+        data_size = np.multiply.reduce([self.data.shape[d] for d in axis])
+        
+        if data_size == 1:
+            print("Not calculating statistics for %s dataset averaged along %s: data size of 1." % (self.axes, axis_name))
+            return
+        
+        stats = self.hdu_group.require_group("Statistics/%s/%s" % (self.name, axis_name))
         
         with warnings.catch_warnings():
             # nanmean, etc. print a warning for empty slices, i.e. planes full of nans, but give the correct answer (nan).
@@ -42,7 +49,6 @@ class DataSet:
         stats.create_dataset("NAN_COUNT", data=np.count_nonzero(np.isnan(self.data), axis=axis))
         
     def write_histogram(self, axis_name):
-        stats = self.hdu_group.require_group("Statistics/%s/%s" % (self.name, axis_name))
         axis = self.axis_numeric(axis_name)
         
         shape = self.data.shape
@@ -51,8 +57,10 @@ class DataSet:
         data_size = np.multiply.reduce([shape[d] for d in axis])
         
         if data_size == 1:
-            print("Not calculating histogram for %s dataset averaged along %s: data size of 1." % (self.axes, axis))
+            print("Not calculating histogram for %s dataset averaged along %s: data size of 1." % (self.axes, axis_name))
             return
+        
+        stats = self.hdu_group.require_group("Statistics/%s/%s" % (self.name, axis_name))
         
         N = int(np.sqrt(data_size))
         not_axis = [d for d in range(ndim) if d not in axis]
@@ -82,18 +90,19 @@ class DataSet:
     def write_percentiles(self, axis_name):
         percentiles = np.array([0.001, 0.01, 0.05, 0.1, 0.5, 1.0, 5.0, 10.0, 50.0, 90.0, 95.0, 99.0, 99.5, 99.9, 99.95, 99.99, 99.999])
         
-        if "PERCENTILE_RANKS" not in self.hdu_group:
-            self.hdu_group.create_dataset("PERCENTILE_RANKS", percentiles)
-        
-        stats = self.hdu_group.require_group("Statistics/%s/%s" % (self.name, axis_name))
         axis = self.axis_numeric(axis_name)
         
         data_size = np.multiply.reduce([self.data.shape[d] for d in axis])
         
         if data_size == 1:
-            print("Not calculating percentiles for %s dataset averaged along %s: data size of 1." % (self.axes, axis))
+            print("Not calculating percentiles for %s dataset averaged along %s: data size of 1." % (self.axes, axis_name))
             return
-                
+        
+        if "PERCENTILE_RANKS" not in self.hdu_group:
+            self.hdu_group.create_dataset("PERCENTILE_RANKS", data=percentiles)
+        
+        stats = self.hdu_group.require_group("Statistics/%s/%s" % (self.name, axis_name))
+        
         with warnings.catch_warnings():
             # nanmean prints a warning for empty slices, i.e. planes full of nans, but gives the correct answer (nan).
             warnings.simplefilter("ignore", category=RuntimeWarning)
@@ -102,14 +111,18 @@ class DataSet:
         
         stats.create_dataset("PERCENTILES", data=percentile_values)
     
-    def write(self, statistics_axes, chunks):        
+    def write(self, args):        
         # write this dataset
-        self.hdu_group.create_dataset(self.name, data=self.data, chunks=tuple(chunks) if chunks else None)
+        self.hdu_group.create_dataset(self.name, data=self.data, chunks=tuple(args.chunks) if args.chunks else None)
         
         # write statistics
-        for axis_name in statistics_axes:
+        for axis_name in args.statistics:
             self.write_statistics(axis_name)
+            
+        for axis_name in args.histograms:
             self.write_histogram(axis_name)
+            
+        for axis_name in args.percentiles:
             self.write_percentiles(axis_name)
 
 
@@ -139,8 +152,8 @@ class HDUGroup:
             if key in self.header:
                 hdu_group.attrs.create(key, _convert(self.header[key]))
         
-    def write(self, hdf5file, statistics_axes=None, chunks=None):
-        hdu_group = hdf5file.require_group(self.name)
+    def write(self, args):
+        hdu_group = self.hdf5file.require_group(self.name)
         
         # Copy attributes from header
         attrs_to_copy = set(self.FITS_KEEP)
@@ -162,7 +175,7 @@ class HDUGroup:
         
         main_dataset = DataSet(hdu_group, self.data, axes)
         
-        main_dataset.write(statistics_axes=statistics_axes, chunks=chunks)
+        main_dataset.write(args)
         
         # TODO: swizzles
 
@@ -186,7 +199,7 @@ class Converter:
         # TODO: iterate over all the HDUs -- how do we pick the names?
         # TODO: some HDUs are just tables.
         primary = HDUGroup(self.hdf5, "Primary", self.fits[0])
-        primary.write(self.hdf5, statistics_axes=args.statistics_axes, chunks=args.chunks)
+        primary.write(args)
 
 
 if __name__ == '__main__':
@@ -194,7 +207,9 @@ if __name__ == '__main__':
     parser.add_argument('filename', help='Input filename')
     # TODO how do we change this when we keep the 4D dataset?
     parser.add_argument('--chunks', nargs=3, type=int, help='Chunks to use, order: Z Y X')
-    parser.add_argument('--statistics-axes', nargs="+", help='Axes along which statistics should be calculated, e.g. XY, Z, XYZ', default=tuple())
+    parser.add_argument('--statistics', nargs="+", help='Axes along which statistics should be calculated, e.g. XY, Z, XYZ', default=tuple())
+    parser.add_argument('--histograms', nargs="+", help='Axes along which histograms should be calculated, e.g. XY, Z, XYZ', default=tuple())
+    parser.add_argument('--percentiles', nargs="+", help='Axes along which percentiles should be calculated, e.g. XY, Z, XYZ', default=tuple())
     # TODO if we want to split out stokes, we should pass in a stokes parameter
     # TODO optional parameter to override axes?
     args = parser.parse_args()
