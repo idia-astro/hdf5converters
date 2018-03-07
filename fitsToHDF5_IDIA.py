@@ -131,6 +131,7 @@ class Dataset:
     
     def write(self, args):
         # write this dataset
+        # TODO TODO TODO check that the number of chunks matches the data dimensions
         self.hdu_group.create_dataset(self.name, data=self.data, chunks=tuple(args.chunks) if args.chunks else None)
         
         # write statistics
@@ -224,14 +225,12 @@ class Converter:
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('filename', help='Input filename')
-    # TODO how do we change this when we keep the 4D dataset?
-    parser.add_argument('--chunks', nargs=3, type=int, help='Chunks to use, order: Z Y X')
+    parser.add_argument('--chunks', nargs="+", type=int, help='Chunks to use, order: Z Y X')
     parser.add_argument('--statistics', nargs="+", help='Axes along which statistics should be calculated, e.g. XY, Z, XYZ', default=tuple())
     parser.add_argument('--histograms', nargs="+", help='Axes along which histograms should be calculated, e.g. XY, Z, XYZ', default=tuple())
     parser.add_argument('--percentiles', nargs="+", help='Axes along which percentiles should be calculated, e.g. XY, Z, XYZ', default=tuple())
     parser.add_argument('--swizzles', nargs="+", help='Axes for which swizzled datasets should be written, e.g. ZYXW', default=tuple())
     # TODO if we want to split out stokes, we should pass in a stokes parameter
-    # TODO optional parameter to override axes?
     args = parser.parse_args()
     
     baseFileName, _ = os.path.splitext(args.filename)
