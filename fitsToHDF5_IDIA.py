@@ -8,16 +8,12 @@ import os
 import re
 import itertools
 
+
 # helper class storing state for an original or swizzled dataset
-class DataSet:
-    def __init__(self, hdu_group, data, axes, swizzled=False):
+class Dataset:
+    def __init__(self, hdu_group, data, axes):
         self.hdu_group = hdu_group
-        
-        if swizzled:
-            self.name = "DATA_" + axes
-        else:
-            self.name = "DATA"
-        
+        self.name = "DATA"
         self.axes = axes
         self._reverse_axes = list(reversed(axes))
         self.data = data
@@ -29,6 +25,10 @@ class DataSet:
         return tuple(sorted(self._reverse_axes.index(l) for l in axis_name))
     
     def write_statistics(self, axis_name):
+        if not all(d in self.axes for d in axis_name):
+            print("Could not average %s dataset along %s." % (self.axes, axis_name))
+            return
+        
         axis = self.axis_numeric(axis_name)
         
         data_size = np.multiply.reduce([self.data.shape[d] for d in axis])
@@ -37,7 +37,7 @@ class DataSet:
             print("Not calculating statistics for %s dataset averaged along %s: data size of 1." % (self.axes, axis_name))
             return
         
-        stats = self.hdu_group.require_group("Statistics/%s/%s" % (self.name, axis_name))
+        stats = self.hdu_group.require_group("Statistics/%s" % axis_name)
         
         with warnings.catch_warnings():
             # nanmean, etc. print a warning for empty slices, i.e. planes full of nans, but give the correct answer (nan).
@@ -49,6 +49,10 @@ class DataSet:
         stats.create_dataset("NAN_COUNT", data=np.count_nonzero(np.isnan(self.data), axis=axis))
         
     def write_histogram(self, axis_name):
+        if not all(d in self.axes for d in axis_name):
+            print("Could not average %s dataset along %s." % (self.axes, axis_name))
+            return
+        
         axis = self.axis_numeric(axis_name)
         
         shape = self.data.shape
@@ -60,7 +64,7 @@ class DataSet:
             print("Not calculating histogram for %s dataset averaged along %s: data size of 1." % (self.axes, axis_name))
             return
         
-        stats = self.hdu_group.require_group("Statistics/%s/%s" % (self.name, axis_name))
+        stats = self.hdu_group.require_group("Statistics/%s" % axis_name)
         
         N = int(np.sqrt(data_size))
         not_axis = [d for d in range(ndim) if d not in axis]
@@ -88,6 +92,10 @@ class DataSet:
         stats.create_dataset("HISTOGRAM", data=bins)
     
     def write_percentiles(self, axis_name):
+        if not all(d in self.axes for d in axis_name):
+            print("Could not average %s dataset along %s." % (self.axes, axis_name))
+            return
+        
         percentiles = np.array([0.001, 0.01, 0.05, 0.1, 0.5, 1.0, 5.0, 10.0, 50.0, 90.0, 95.0, 99.0, 99.5, 99.9, 99.95, 99.99, 99.999])
         
         axis = self.axis_numeric(axis_name)
@@ -101,7 +109,7 @@ class DataSet:
         if "PERCENTILE_RANKS" not in self.hdu_group:
             self.hdu_group.create_dataset("PERCENTILE_RANKS", data=percentiles)
         
-        stats = self.hdu_group.require_group("Statistics/%s/%s" % (self.name, axis_name))
+        stats = self.hdu_group.require_group("Statistics/%s" % axis_name)
         
         with warnings.catch_warnings():
             # nanmean prints a warning for empty slices, i.e. planes full of nans, but gives the correct answer (nan).
@@ -110,8 +118,18 @@ class DataSet:
             percentile_values = np.nanpercentile(self.data, percentiles, axis=axis).transpose() 
         
         stats.create_dataset("PERCENTILES", data=percentile_values)
+        
+    def write_swizzled_dataset(self, axis_name):
+        if len(axis_name) != len(self.axes) or not all(d in self.axes for d in axis_name):
+            print("Could not swizzle %s dataset to %s." % (self.axes, axis_name))
+            return
+        
+        axis = self.axis_numeric(axis_name)
+        swizzled = self.hdu_group.require_group("SwizzledData")
+        # TODO chunks, also check all axes for sanity
+        self.hdu_group.create_dataset(axis_name, data=np.transpose(self.data, axis))
     
-    def write(self, args):        
+    def write(self, args):
         # write this dataset
         self.hdu_group.create_dataset(self.name, data=self.data, chunks=tuple(args.chunks) if args.chunks else None)
         
@@ -124,7 +142,11 @@ class DataSet:
             
         for axis_name in args.percentiles:
             self.write_percentiles(axis_name)
-
+        
+        # write swizzled datasets
+        for axis_name in args.swizzles:
+            self.write_swizzled_dataset(axis_name)
+            
 
 class HDUGroup:
     # FITS header attributes to keep (exact names)
@@ -173,11 +195,8 @@ class HDUGroup:
         # TODO: this is good enough for now, but we should look for a more robust way to detect the order
         axes = "XYZW"[:num_axes]
         
-        main_dataset = DataSet(hdu_group, self.data, axes)
-        
+        main_dataset = Dataset(hdu_group, self.data, axes)
         main_dataset.write(args)
-        
-        # TODO: swizzles
 
 
 class Converter:
@@ -196,9 +215,9 @@ class Converter:
         self.hdf5.close()
 
     def convert(self, args):
-        # TODO: iterate over all the HDUs -- how do we pick the names?
         # TODO: some HDUs are just tables.
-        primary = HDUGroup(self.hdf5, "Primary", self.fits[0])
+        # TODO: what are our actual use cases for multiple HDUs? Do we want to apply the same arguments to all of them?
+        primary = HDUGroup(self.hdf5, "0", self.fits[0])
         primary.write(args)
 
 
@@ -210,6 +229,7 @@ if __name__ == '__main__':
     parser.add_argument('--statistics', nargs="+", help='Axes along which statistics should be calculated, e.g. XY, Z, XYZ', default=tuple())
     parser.add_argument('--histograms', nargs="+", help='Axes along which histograms should be calculated, e.g. XY, Z, XYZ', default=tuple())
     parser.add_argument('--percentiles', nargs="+", help='Axes along which percentiles should be calculated, e.g. XY, Z, XYZ', default=tuple())
+    parser.add_argument('--swizzles', nargs="+", help='Axes for which swizzled datasets should be written, e.g. ZYXW', default=tuple())
     # TODO if we want to split out stokes, we should pass in a stokes parameter
     # TODO optional parameter to override axes?
     args = parser.parse_args()
