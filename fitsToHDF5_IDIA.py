@@ -220,6 +220,17 @@ class Converter:
         # TODO: what are our actual use cases for multiple HDUs? Do we want to apply the same arguments to all of them?
         primary = HDUGroup(self.hdf5, "0", self.fits[0])
         primary.write(args)
+        
+        
+def convert(args):
+    filedir, filename = os.path.split(args.filename)
+    basefilename, _ = os.path.splitext(filename)
+
+    output_dir = args.output_dir if args.output_dir else filedir
+    output_filepath = os.path.join(output_dir, basefilename + ".hdf5")
+        
+    with Converter(args.filename, output_filepath) as converter:
+        converter.convert(args)
 
 
 if __name__ == '__main__':
@@ -230,16 +241,8 @@ if __name__ == '__main__':
     parser.add_argument('--histograms', nargs="+", help='Axes along which histograms should be calculated, e.g. XY, Z, XYZ', default=tuple())
     parser.add_argument('--percentiles', nargs="+", help='Axes along which percentiles should be calculated, e.g. XY, Z, XYZ', default=tuple())
     parser.add_argument('--swizzles', nargs="+", help='Axes for which swizzled datasets should be written, e.g. ZYXW', default=tuple())
+    parser.add_argument('--output-dir', help="Output directory. By default, the directory of the original file will be used.")
     # TODO if we want to split out stokes, we should pass in a stokes parameter
     args = parser.parse_args()
     
-    baseFileName, _ = os.path.splitext(args.filename)
-
-    if args.chunks:
-        outputFileName = baseFileName + "_chunked_{}_{}_{}.hdf5".format(args.chunks[0], args.chunks[1], args.chunks[2])
-    else:
-        outputFileName = baseFileName + ".hdf5"
-        
-    with Converter(args.filename, outputFileName) as converter:
-        converter.convert(args)
-    
+    convert(args)
