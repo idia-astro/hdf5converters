@@ -24,6 +24,18 @@ class Dataset:
             e.g. if axes are XYZW, Z -> 1, XY -> (2, 3)
         """
         return tuple(sorted(self._reverse_axes.index(l) for l in axis_name))
+        
+    def swizzle_axis_numeric(self, axis_name):
+        """Convert named swizzle axes to numeric axes, relative to this dataset
+            e.g. if axes are XYZW, ZYXW -> (0, 3, 2, 1)
+        """
+        return tuple(self._reverse_axes.index(l) for l in reversed(axis_name))
+    
+    def max_bins(self):
+        """Limit the number of histogram bins to the root of the size of the largest product of two dimensions.
+            This will probably be the root of X * Y.
+        """
+        return int(np.sqrt(max(a * b for a, b in itertools.combinations(self.data.shape, 2))))
     
     def write_statistics(self, axis_name):
         if not all(d in self.axes for d in axis_name):
@@ -71,7 +83,8 @@ class Dataset:
         
         stats = self.hdu_group.require_group("Statistics/%s" % axis_name)
         
-        N = int(np.sqrt(data_size))
+        N = min(int(np.sqrt(data_size)), self.max_bins())
+                
         not_axis = [d for d in range(ndim) if d not in axis]
         data_index = [slice(None)] * ndim
         
@@ -94,7 +107,7 @@ class Dataset:
             else:
                 bins[tuple(bin_index)] = np.nan
 
-        stats.create_dataset("HISTOGRAM", data=bins)
+        stats.create_dataset("HISTOGRAM", data=bins, dtype='int64')
     
     def write_percentiles(self, axis_name):
         if not all(d in self.axes for d in axis_name):
@@ -114,7 +127,7 @@ class Dataset:
         logging.info("Writing percentiles for axis %s..." % axis_name)
         
         if "PERCENTILE_RANKS" not in self.hdu_group:
-            self.hdu_group.create_dataset("PERCENTILE_RANKS", data=percentiles)
+            self.hdu_group.create_dataset("PERCENTILE_RANKS", data=percentiles, dtype='float32')
         
         stats = self.hdu_group.require_group("Statistics/%s" % axis_name)
         
@@ -124,7 +137,7 @@ class Dataset:
             # TODO TODO TODO test with other axes; see if transposing is always the right thing to do
             percentile_values = np.nanpercentile(self.data, percentiles, axis=axis).transpose() 
         
-        stats.create_dataset("PERCENTILES", data=percentile_values)
+        stats.create_dataset("PERCENTILES", data=percentile_values, dtype='float32')
         
     def write_swizzled_dataset(self, axis_name):
         if len(axis_name) != len(self.axes) or not all(d in self.axes for d in axis_name):
@@ -133,7 +146,7 @@ class Dataset:
         
         logging.info("Writing swizzled dataset %s..." % axis_name)
         
-        axis = self.axis_numeric(axis_name)
+        axis = self.swizzle_axis_numeric(axis_name)
         swizzled = self.hdu_group.require_group("SwizzledData")
         # TODO chunks, also check all axes for sanity
         swizzled.create_dataset(axis_name, data=np.transpose(self.data, axis))
