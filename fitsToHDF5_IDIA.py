@@ -134,10 +134,9 @@ class Dataset:
         with warnings.catch_warnings():
             # nanmean prints a warning for empty slices, i.e. planes full of nans, but gives the correct answer (nan).
             warnings.simplefilter("ignore", category=RuntimeWarning)
-            # TODO TODO TODO test with other axes; see if transposing is always the right thing to do
-            percentile_values = np.nanpercentile(self.data, percentiles, axis=axis).transpose() 
+            percentile_values = np.nanpercentile(self.data, percentiles, axis=axis)
         
-        stats.create_dataset("PERCENTILES", data=percentile_values, dtype='float32')
+        stats.create_dataset("PERCENTILES", data=np.transpose(percentile_values, list(range(percentile_values.ndim))[1:] + [0]), dtype='float32')
         
     def write_swizzled_dataset(self, axis_name):
         if len(axis_name) != len(self.axes) or not all(d in self.axes for d in axis_name):
@@ -148,7 +147,6 @@ class Dataset:
         
         axis = self.swizzle_axis_numeric(axis_name)
         swizzled = self.hdu_group.require_group("SwizzledData")
-        # TODO chunks, also check all axes for sanity
         swizzled.create_dataset(axis_name, data=np.transpose(self.data, axis))
     
     def write(self, args):
