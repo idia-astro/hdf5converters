@@ -25,6 +25,12 @@ class Dataset:
         """
         return tuple(sorted(self._reverse_axes.index(l) for l in axis_name))
     
+    def max_bins(self):
+        """Limit the number of histogram bins to the root of the size of the largest product of two dimensions.
+            This will probably be the root of X * Y.
+        """
+        return int(np.sqrt(max(a * b for a, b in itertools.combinations(self.data.shape, 2))))
+    
     def write_statistics(self, axis_name):
         if not all(d in self.axes for d in axis_name):
             logging.warning("Could not average %s dataset along %s." % (self.axes, axis_name))
@@ -71,7 +77,8 @@ class Dataset:
         
         stats = self.hdu_group.require_group("Statistics/%s" % axis_name)
         
-        N = int(np.sqrt(data_size))
+        N = min(int(np.sqrt(data_size)), self.max_bins())
+                
         not_axis = [d for d in range(ndim) if d not in axis]
         data_index = [slice(None)] * ndim
         
