@@ -127,7 +127,7 @@ class Dataset:
         axis = self.axis_numeric(axis_name)
         swizzled = self.hdu_group.require_group("SwizzledData")
         # TODO chunks, also check all axes for sanity
-        self.hdu_group.create_dataset(axis_name, data=np.transpose(self.data, axis))
+        swizzled.create_dataset(axis_name, data=np.transpose(self.data, axis))
     
     def write(self, args):
         # write this dataset
