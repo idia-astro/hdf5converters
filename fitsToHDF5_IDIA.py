@@ -24,6 +24,12 @@ class Dataset:
             e.g. if axes are XYZW, Z -> 1, XY -> (2, 3)
         """
         return tuple(sorted(self._reverse_axes.index(l) for l in axis_name))
+        
+    def swizzle_axis_numeric(self, axis_name):
+        """Convert named swizzle axes to numeric axes, relative to this dataset
+            e.g. if axes are XYZW, ZYXW -> (0, 3, 2, 1)
+        """
+        return tuple(self._reverse_axes.index(l) for l in reversed(axis_name))
     
     def max_bins(self):
         """Limit the number of histogram bins to the root of the size of the largest product of two dimensions.
@@ -140,7 +146,7 @@ class Dataset:
         
         logging.info("Writing swizzled dataset %s..." % axis_name)
         
-        axis = self.axis_numeric(axis_name)
+        axis = self.swizzle_axis_numeric(axis_name)
         swizzled = self.hdu_group.require_group("SwizzledData")
         # TODO chunks, also check all axes for sanity
         swizzled.create_dataset(axis_name, data=np.transpose(self.data, axis))
