@@ -107,7 +107,7 @@ class Dataset:
             else:
                 bins[tuple(bin_index)] = np.nan
 
-        stats.create_dataset("HISTOGRAM", data=bins)
+        stats.create_dataset("HISTOGRAM", data=bins, dtype='int64')
     
     def write_percentiles(self, axis_name):
         if not all(d in self.axes for d in axis_name):
@@ -127,7 +127,7 @@ class Dataset:
         logging.info("Writing percentiles for axis %s..." % axis_name)
         
         if "PERCENTILE_RANKS" not in self.hdu_group:
-            self.hdu_group.create_dataset("PERCENTILE_RANKS", data=percentiles)
+            self.hdu_group.create_dataset("PERCENTILE_RANKS", data=percentiles, dtype='float')
         
         stats = self.hdu_group.require_group("Statistics/%s" % axis_name)
         
@@ -137,7 +137,7 @@ class Dataset:
             # TODO TODO TODO test with other axes; see if transposing is always the right thing to do
             percentile_values = np.nanpercentile(self.data, percentiles, axis=axis).transpose() 
         
-        stats.create_dataset("PERCENTILES", data=percentile_values)
+        stats.create_dataset("PERCENTILES", data=percentile_values, dtype='float')
         
     def write_swizzled_dataset(self, axis_name):
         if len(axis_name) != len(self.axes) or not all(d in self.axes for d in axis_name):
