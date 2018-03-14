@@ -2,208 +2,263 @@
 from astropy.io import fits
 import h5py
 import numpy as np
-import sys
-from typing import List, Callable
+import warnings
 import argparse
 import os
+import re
+import itertools
+import logging
 
 
-def convert(val, dtype: Callable = np.string_):
-    return dtype(val)
+# helper class storing state for an original or swizzled dataset
+class Dataset:
+    def __init__(self, hdu_group, data, axes):
+        self.hdu_group = hdu_group
+        self.name = "DATA"
+        self.axes = axes
+        self._reverse_axes = list(reversed(axes))
+        self.data = data
+        
+    def axis_numeric(self, axis_name):
+        """Convert named axes to numeric axes, relative to this dataset
+            e.g. if axes are XYZW, Z -> 1, XY -> (2, 3)
+        """
+        return tuple(sorted(self._reverse_axes.index(l) for l in axis_name))
+    
+    def write_statistics(self, axis_name):
+        if not all(d in self.axes for d in axis_name):
+            logging.warning("Could not average %s dataset along %s." % (self.axes, axis_name))
+            return
+        
+        axis = self.axis_numeric(axis_name)
+        
+        data_size = np.multiply.reduce([self.data.shape[d] for d in axis])
+        
+        if data_size == 1:
+            logging.warning("Not calculating statistics for %s dataset averaged along %s: data size of 1." % (self.axes, axis_name))
+            return
+        
+        logging.info("Writing statistics for axis %s..." % axis_name)
+        
+        stats = self.hdu_group.require_group("Statistics/%s" % axis_name)
+        
+        with warnings.catch_warnings():
+            # nanmean, etc. print a warning for empty slices, i.e. planes full of nans, but give the correct answer (nan).
+            warnings.simplefilter("ignore", category=RuntimeWarning)
+            stats.create_dataset("MEAN", data=np.nanmean(self.data, axis=axis))
+            stats.create_dataset("MIN", data=np.nanmin(self.data, axis=axis))
+            stats.create_dataset("MAX", data=np.nanmax(self.data, axis=axis))
+            
+        stats.create_dataset("NAN_COUNT", data=np.count_nonzero(np.isnan(self.data), axis=axis))
+        
+    def write_histogram(self, axis_name):
+        if not all(d in self.axes for d in axis_name):
+            logging.warning("Could not average %s dataset along %s." % (self.axes, axis_name))
+            return
+        
+        axis = self.axis_numeric(axis_name)
+        
+        shape = self.data.shape
+        ndim = self.data.ndim
+        
+        data_size = np.multiply.reduce([shape[d] for d in axis])
+        
+        if data_size == 1:
+            logging.warning("Not calculating histogram for %s dataset averaged along %s: data size of 1." % (self.axes, axis_name))
+            return
+        
+        logging.info("Writing histograms for axis %s..." % axis_name)
+        
+        stats = self.hdu_group.require_group("Statistics/%s" % axis_name)
+        
+        N = int(np.sqrt(data_size))
+        not_axis = [d for d in range(ndim) if d not in axis]
+        data_index = [slice(None)] * ndim
+        
+        bins = np.zeros([shape[d] for d in not_axis] + [N])
+        bin_index = [slice(None)] * bins.ndim
+        
+        for iterdims in itertools.product(*(range(shape[d]) for d in not_axis)):
+            for d, v in zip(not_axis, iterdims):
+                data_index[d] = v
+                
+            for d, v in enumerate(iterdims):
+                bin_index[d] = v
+                    
+            data_slice = self.data[tuple(data_index)]
+            data_notnan = data_slice[~np.isnan(data_slice)]
+            
+            if data_notnan.size:
+                b, _ = np.histogram(data_notnan, N)
+                bins[tuple(bin_index)] = b
+            else:
+                bins[tuple(bin_index)] = np.nan
 
+        stats.create_dataset("HISTOGRAM", data=bins)
+    
+    def write_percentiles(self, axis_name):
+        if not all(d in self.axes for d in axis_name):
+            logging.warning("Could not average %s dataset along %s." % (self.axes, axis_name))
+            return
+        
+        percentiles = np.array([0.001, 0.01, 0.05, 0.1, 0.5, 1.0, 5.0, 10.0, 50.0, 90.0, 95.0, 99.0, 99.5, 99.9, 99.95, 99.99, 99.999])
+        
+        axis = self.axis_numeric(axis_name)
+        
+        data_size = np.multiply.reduce([self.data.shape[d] for d in axis])
+        
+        if data_size == 1:
+            logging.warning("Not calculating percentiles for %s dataset averaged along %s: data size of 1." % (self.axes, axis_name))
+            return
+        
+        logging.info("Writing percentiles for axis %s..." % axis_name)
+        
+        if "PERCENTILE_RANKS" not in self.hdu_group:
+            self.hdu_group.create_dataset("PERCENTILE_RANKS", data=percentiles)
+        
+        stats = self.hdu_group.require_group("Statistics/%s" % axis_name)
+        
+        with warnings.catch_warnings():
+            # nanmean prints a warning for empty slices, i.e. planes full of nans, but gives the correct answer (nan).
+            warnings.simplefilter("ignore", category=RuntimeWarning)
+            # TODO TODO TODO test with other axes; see if transposing is always the right thing to do
+            percentile_values = np.nanpercentile(self.data, percentiles, axis=axis).transpose() 
+        
+        stats.create_dataset("PERCENTILES", data=percentile_values)
+        
+    def write_swizzled_dataset(self, axis_name):
+        if len(axis_name) != len(self.axes) or not all(d in self.axes for d in axis_name):
+            logging.warning("Could not swizzle %s dataset to %s." % (self.axes, axis_name))
+            return
+        
+        logging.info("Writing swizzled dataset %s..." % axis_name)
+        
+        axis = self.axis_numeric(axis_name)
+        swizzled = self.hdu_group.require_group("SwizzledData")
+        # TODO chunks, also check all axes for sanity
+        swizzled.create_dataset(axis_name, data=np.transpose(self.data, axis))
+    
+    def write(self, args):
+        # write this dataset
+        # TODO TODO TODO check that the number of chunks matches the data dimensions
+        logging.info("Writing main dataset...")
+        self.hdu_group.create_dataset(self.name, data=self.data, chunks=tuple(args.chunks) if args.chunks else None)
+        
+        # write statistics
+        for axis_name in args.statistics:
+            self.write_statistics(axis_name)
+            
+        for axis_name in args.histograms:
+            self.write_histogram(axis_name)
+            
+        for axis_name in args.percentiles:
+            self.write_percentiles(axis_name)
+        
+        # write swizzled datasets
+        for axis_name in args.swizzles:
+            self.write_swizzled_dataset(axis_name)
+            
 
-def get_attr_copier(header: fits.Header):
-    def copy_attrs(obj, keys: List[str], dtype: Callable = np.string_):
+class HDUGroup:
+    # FITS header attributes to keep (exact names)
+    FITS_KEEP = ('BUNIT', 'DATE-OBS', 'EQUINOX', 'INSTR', 'OBSDEC', 'OBSERVER', 'OBSGEO-X', 'OBSGEO-Y', 'OBSGEO-Z', 'OBSRA', 'RADESYS', 'TELE', 'TIMESYS')
+    
+    # FITS header attributes to keep (regular expression matches)
+    FITS_KEEP_RE = (
+        re.compile('^(CDELT|CROTA|CRPIX|CRVAL|CTYPE|CUNIT)\d+'),
+        re.compile('^NAXIS\d*')
+    )
+    
+    def __init__(self, hdf5file, name, fits_hdu):
+        self.hdf5file = hdf5file
+        self.name = name
+        self.data = fits_hdu.data
+        self.header = fits_hdu.header
+
+    def copy_attrs(self, hdu_group, keys):
+        def _convert(val):
+            if isinstance(val, str):
+                return np.string_(val)
+            return val
+        
         for key in keys:
-            if key in header:
-                obj.attrs.create(key, convert(header[key], dtype))
-    return copy_attrs
-
-
-def get_or_create_group(parent: h5py.Group, name: str):
-    if name in parent:
-        return parent[name]
-    return parent.create_group(name)
-
-
-def write_core(header: fits.Header, data: np.ndarray, outputHDF5: h5py.File, args: argparse.Namespace):
-    copy_attrs = get_attr_copier(header)
-    
-    syslogGroup = outputHDF5.create_group("SysLog")
-    
-    if 'HISTORY' in header:
-        syslogGroup.attrs.create('HISTORY', [np.string_(val) for val in header['HISTORY']])
+            if key in self.header:
+                hdu_group.attrs.create(key, _convert(self.header[key]))
         
-    if 'COMMENT' in header:
-        syslogGroup.attrs.create('COMMENT', [np.string_(val) for val in header['COMMENT']])
+    def write(self, args):
+        hdu_group = self.hdf5file.require_group(self.name)
+        
+        # Copy attributes from header
+        attrs_to_copy = set(self.FITS_KEEP)
+        for regex in self.FITS_KEEP_RE:
+            attrs_to_copy |= {k for k in self.header if regex.search(k)}
+        
+        self.copy_attrs(hdu_group, attrs_to_copy)
 
-    currentGroup = get_or_create_group(outputHDF5, "Image")
-    
-    coordinatesGroup = currentGroup.create_group("Coordinates")
-    
-    directionCoordinatesGroup = coordinatesGroup.create_group("DirectionCoordinates")
-    copy_attrs(directionCoordinatesGroup, ['CTYPE1', 'CUINIT1', 'CTYPE2', 'CUINIT2', 'RADESYS'])
-    copy_attrs(directionCoordinatesGroup, ['CRVAL1', 'CRPIX1', 'CDELT1', 'CROTA1', 'CRVAL2', 'CRPIX2', 'CDELT2', 'CROTA2', 'EQUINOX'], float)
+        if 'HISTORY' in self.header:
+            hdu_group.create_dataset('HISTORY', data=[np.string_(val) for val in self.header['HISTORY']])
+            
+        if 'COMMENT' in self.header:
+            hdu_group.create_dataset('COMMENT', data=[np.string_(val) for val in self.header['COMMENT']])
+            
+        num_axes = self.header["NAXIS"]
+        
+        # TODO: this is good enough for now, but we should look for a more robust way to detect the order
+        axes = "XYZW"[:num_axes]
+        
+        main_dataset = Dataset(hdu_group, self.data, axes)
+        main_dataset.write(args)
 
-    spectralCoordinatesGroup = coordinatesGroup.create_group("SpectralCoordinate")
-    copy_attrs(spectralCoordinatesGroup, ['CTYPE3', 'CUINIT3'])
-    copy_attrs(spectralCoordinatesGroup, ['CRVAL3', 'CRPIX3', 'CDELT3', 'CROTA3'], float)
 
-    polarizationCoordinateGroup = coordinatesGroup.create_group("PolarizationCoordinate")
-    polarizationCoordinateGroup.attrs.create('MultiStokes', False)
-    if args.stokes:
-        polarizationCoordinateGroup.attrs.create('StokesCoordinates', convert(args.stokes))
+class Converter:
+    def __init__(self, fitsname, hdf5name):
+        self.fitsname = fitsname
+        self.hdf5name = hdf5name
+        
+    def __enter__(self):
+        self.fits = fits.open(self.fitsname)
+        self.hdf5 = h5py.File(self.hdf5name, "w")
+            
+        return self
+        
+    def __exit__(self, e_type, e_value, e_traceback):
+        self.fits.close()
+        self.hdf5.close()
 
-    sourceTableGroup = currentGroup.create_group("SourceTable")
-    copy_attrs(sourceTableGroup, ['TELE', 'OBSERVER', 'INSTR', 'DATE-OBS', 'TIMESYS'])
-    copy_attrs(sourceTableGroup, ['OBSRA', 'OBSDEC', 'OBSGEO-X', 'OBSGEO-Y', 'OBSGEO-Z'], float)
-
-    # Currently unused?
-    processingHistoryGroup = currentGroup.create_group("ProcessingHistory")
-    
-    if args.chunks:
-        dataSet = currentGroup.create_dataset("Data", dims, dtype='f4', data=data, chunks=tuple(args.chunks))
+    def convert(self, args):
+        # TODO: some HDUs are just tables.
+        # TODO: what are our actual use cases for multiple HDUs? Do we want to apply the same arguments to all of them?
+        primary = HDUGroup(self.hdf5, "0", self.fits[0])
+        primary.write(args)
+        
+        
+def convert(args):
+    if args.quiet:
+        logging.basicConfig(level=logging.CRITICAL)
     else:
-        dataSet = currentGroup.create_dataset("Data", dims, dtype='f4', data=data)
-
-    copy_attrs(dataSet, ['BUNIT'])
-
-    if args.stokes:
-        dataSet.attrs.create('Stokes', convert(args.stokes))
-
-
-def write_statistics(header: fits.Header, data: np.ndarray, outputHDF5: h5py.File, args: argparse.Namespace):
-    dims = data.shape
+        logging.basicConfig(level=logging.DEBUG)
     
-    # CALCULATE
+    filedir, filename = os.path.split(args.filename)
+    basefilename, _ = os.path.splitext(filename)
 
-    percentiles = np.array([0.001, 0.01, 0.05, 0.1, 0.5, 1.0, 5.0, 10.0, 50.0, 90.0, 95.0, 99.0, 99.5, 99.9, 99.95, 99.99, 99.999])
-
-    means = np.zeros(dims[0] + 1)
-    minVals = np.zeros(dims[0] + 1)
-    maxVals = np.zeros(dims[0] + 1)
-    nanCounts = np.zeros(dims[0] + 1)
-
-    averageData = np.zeros(dims[1:])
-    averageCount = np.zeros(dims[1:])
-
-    percentileVals = np.zeros([dims[0] + 1, len(percentiles)])
-    N = int(np.sqrt(dims[1] * dims[2]))
-    histogramBins = np.zeros([dims[0] + 1, N])
-    histogramFirstBinCenters = np.zeros(dims[0] + 1)
-    histogramBinWidths = np.zeros(dims[0] + 1)
-
-    for i in range(dims[0]):
-        tmpData = data[i, :, :]
-        nanArray = np.isnan(tmpData)
-        nanCounts[i] = np.count_nonzero(nanArray)
-        tmpDataNanFixed = tmpData[~nanArray]
-        if nanCounts[i] == tmpData.shape[0] * tmpData.shape[1]:
-            means[i] = np.NaN
-            minVals[i] = np.NaN
-            maxVals[i] = np.NaN
-            percentileVals[i, :] = np.NaN
-            histogramBins[i, :] = np.NaN
-            histogramBinWidths[i] = np.NaN
-            histogramFirstBinCenters[i] = np.NaN
-        else:
-            means[i] = np.mean(tmpDataNanFixed)
-            minVals[i] = np.min(tmpDataNanFixed)
-            maxVals[i] = np.max(tmpDataNanFixed)
-            percentileVals[i, :] = np.percentile(tmpDataNanFixed, percentiles)
-            (tmpBins, tmpEdges) = np.histogram(tmpDataNanFixed, N)
-            histogramBins[i, :] = tmpBins
-            histogramBinWidths[i] = tmpEdges[1] - tmpEdges[0]
-            histogramFirstBinCenters[i] = (tmpEdges[0] + tmpEdges[1]) / 2.0
-
-            averageCount += (~nanArray).astype(int)
-            averageData += np.nan_to_num(tmpData)
-
-    averageData /= np.fmax(averageCount, 1)
-    averageData[averageCount < 1] = np.NaN
-    averageDataNaNFixed = averageData[~np.isnan(averageData)]
-    means[dims[0]] = np.mean(averageDataNaNFixed)
-    minVals[dims[0]] = np.min(averageDataNaNFixed)
-    maxVals[dims[0]] = np.max(averageDataNaNFixed)
-    nanCounts[dims[0]] = np.count_nonzero(np.isnan(averageData))
-    percentileVals[dims[0], :] = np.percentile(averageDataNaNFixed, percentiles)
-    (tmpBins, tmpEdges) = np.histogram(averageDataNaNFixed, N)
-    histogramBins[dims[0], :] = tmpBins
-    histogramBinWidths[dims[0]] = tmpEdges[1] - tmpEdges[0]
-    histogramFirstBinCenters[dims[0]] = (tmpEdges[0] + tmpEdges[1]) / 2.0
-    
-    # WRITE
+    output_dir = args.output_dir if args.output_dir else filedir
+    output_filepath = os.path.join(output_dir, basefilename + ".hdf5")
         
-    copy_attrs = get_attr_copier(header)
-
-    statsGroup = outputHDF5.create_group("Statistics")
-
-    statsGroup.create_dataset("Means", [dims[0] + 1], dtype='f4', data=means)
-    statsGroup.create_dataset("MinVals", [dims[0] + 1], dtype='f4', data=minVals)
-    statsGroup.create_dataset("MaxVals", [dims[0] + 1], dtype='f4', data=maxVals)
-    statsGroup.create_dataset("NaNCounts", [dims[0] + 1], dtype='i4', data=nanCounts)
-
-    histGroup = statsGroup.create_group("Histograms")
-    histGroup.create_dataset("FirstCenters", [dims[0] + 1], dtype='f4', data=histogramFirstBinCenters)
-    histGroup.create_dataset("BinWidths", [dims[0] + 1], dtype='f4', data=histogramBinWidths)
-    histGroup.create_dataset("Bins", [dims[0] + 1, N], dtype='i4', data=histogramBins)
-
-    percentileGroup = statsGroup.create_group("Percentiles")
-    percentileGroup.create_dataset("Percentiles", [len(percentiles)], dtype='f4', data=percentiles)
-    percentileGroup.create_dataset("Values", [dims[0] + 1, len(percentiles)], dtype='f4', data=percentileVals)
-    
-    currentGroup = get_or_create_group(outputHDF5, "Image")
-        
-    dataSetAverage = currentGroup.create_dataset("AverageData", dims[1:], dtype='f4', data=averageData)
-
-    copy_attrs(dataSetAverage, ['BUNIT'])
-
-    if args.stokes:
-        dataSetAverage.attrs.create('Stokes', convert(args.stokes))
+    with Converter(args.filename, output_filepath) as converter:
+        converter.convert(args)
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('filename', help='Input filename')
-    parser.add_argument('--chunks', nargs=3, type=int, help='Chunks to use, order: Z Y X')
-    parser.add_argument('--stokes', help='Stokes parameter to assign', default='')
+    parser.add_argument('--chunks', nargs="+", type=int, help='Chunks to use, order: Z Y X')
+    parser.add_argument('--statistics', nargs="+", help='Axes along which statistics should be calculated, e.g. XY, Z, XYZ', default=tuple())
+    parser.add_argument('--histograms', nargs="+", help='Axes along which histograms should be calculated, e.g. XY, Z, XYZ', default=tuple())
+    parser.add_argument('--percentiles', nargs="+", help='Axes along which percentiles should be calculated, e.g. XY, Z, XYZ', default=tuple())
+    parser.add_argument('--swizzles', nargs="+", help='Axes for which swizzled datasets should be written, e.g. ZYXW', default=tuple())
+    parser.add_argument('--output-dir', help="Output directory. By default, the directory of the original file will be used.")
+    parser.add_argument('--quiet', action='store_true', help="Suppress all print output.")
+    # TODO if we want to split out stokes, we should pass in a stokes parameter
     args = parser.parse_args()
     
-    if args.stokes:
-        print('Using Stokes parameter {}.'.format(args.stokes))
-    else:
-        print('No Stokes parameter specified.')
-    
-    baseFileName, _ = os.path.splitext(args.filename)
-
-    if args.chunks:
-        outputFileName = baseFileName + "_chunked_{}_{}_{}.hdf5".format(args.chunks[0], args.chunks[1], args.chunks[2])
-    else:
-        outputFileName = baseFileName + ".hdf5"
-    
-    with fits.open(args.filename) as inputFits:
-        data = inputFits[0].data
-        dims = data.shape
-        
-        if len(dims) == 4:
-            dims = dims[1:]
-            data = data[0, :, :, :]
-            
-        if len(dims) == 2:
-            dims = (1, *dims)
-            data = data[None, :]
-            
-        if len(dims) == 3:
-            print('3D FITS file found, converting to HDF5 using IDIA customised LOFAR-USG-ICD-004 data structure')
-            print('File dims: {}'.format(dims))
-            print('Chunk dims: {}'.format(args.chunks))
-            
-            header = inputFits[0].header
-
-            with h5py.File(outputFileName, "w") as outputHDF5:
-                write_core(header, data, outputHDF5, args)
-                write_statistics(header, data, outputHDF5, args)
-
-        else:
-            print('Only 3D FITS files supported for now')
-            sys.exit(1)
+    convert(args)
