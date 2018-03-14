@@ -7,6 +7,7 @@ import argparse
 import os
 import re
 import itertools
+import logging
 
 
 # helper class storing state for an original or swizzled dataset
@@ -26,7 +27,7 @@ class Dataset:
     
     def write_statistics(self, axis_name):
         if not all(d in self.axes for d in axis_name):
-            print("Could not average %s dataset along %s." % (self.axes, axis_name))
+            logging.warning("Could not average %s dataset along %s." % (self.axes, axis_name))
             return
         
         axis = self.axis_numeric(axis_name)
@@ -34,8 +35,10 @@ class Dataset:
         data_size = np.multiply.reduce([self.data.shape[d] for d in axis])
         
         if data_size == 1:
-            print("Not calculating statistics for %s dataset averaged along %s: data size of 1." % (self.axes, axis_name))
+            logging.warning("Not calculating statistics for %s dataset averaged along %s: data size of 1." % (self.axes, axis_name))
             return
+        
+        logging.info("Writing statistics for axis %s..." % axis_name)
         
         stats = self.hdu_group.require_group("Statistics/%s" % axis_name)
         
@@ -50,7 +53,7 @@ class Dataset:
         
     def write_histogram(self, axis_name):
         if not all(d in self.axes for d in axis_name):
-            print("Could not average %s dataset along %s." % (self.axes, axis_name))
+            logging.warning("Could not average %s dataset along %s." % (self.axes, axis_name))
             return
         
         axis = self.axis_numeric(axis_name)
@@ -61,8 +64,10 @@ class Dataset:
         data_size = np.multiply.reduce([shape[d] for d in axis])
         
         if data_size == 1:
-            print("Not calculating histogram for %s dataset averaged along %s: data size of 1." % (self.axes, axis_name))
+            logging.warning("Not calculating histogram for %s dataset averaged along %s: data size of 1." % (self.axes, axis_name))
             return
+        
+        logging.info("Writing histograms for axis %s..." % axis_name)
         
         stats = self.hdu_group.require_group("Statistics/%s" % axis_name)
         
@@ -93,7 +98,7 @@ class Dataset:
     
     def write_percentiles(self, axis_name):
         if not all(d in self.axes for d in axis_name):
-            print("Could not average %s dataset along %s." % (self.axes, axis_name))
+            logging.warning("Could not average %s dataset along %s." % (self.axes, axis_name))
             return
         
         percentiles = np.array([0.001, 0.01, 0.05, 0.1, 0.5, 1.0, 5.0, 10.0, 50.0, 90.0, 95.0, 99.0, 99.5, 99.9, 99.95, 99.99, 99.999])
@@ -103,8 +108,10 @@ class Dataset:
         data_size = np.multiply.reduce([self.data.shape[d] for d in axis])
         
         if data_size == 1:
-            print("Not calculating percentiles for %s dataset averaged along %s: data size of 1." % (self.axes, axis_name))
+            logging.warning("Not calculating percentiles for %s dataset averaged along %s: data size of 1." % (self.axes, axis_name))
             return
+        
+        logging.info("Writing percentiles for axis %s..." % axis_name)
         
         if "PERCENTILE_RANKS" not in self.hdu_group:
             self.hdu_group.create_dataset("PERCENTILE_RANKS", data=percentiles)
@@ -121,8 +128,10 @@ class Dataset:
         
     def write_swizzled_dataset(self, axis_name):
         if len(axis_name) != len(self.axes) or not all(d in self.axes for d in axis_name):
-            print("Could not swizzle %s dataset to %s." % (self.axes, axis_name))
+            logging.warning("Could not swizzle %s dataset to %s." % (self.axes, axis_name))
             return
+        
+        logging.info("Writing swizzled dataset %s..." % axis_name)
         
         axis = self.axis_numeric(axis_name)
         swizzled = self.hdu_group.require_group("SwizzledData")
@@ -132,6 +141,7 @@ class Dataset:
     def write(self, args):
         # write this dataset
         # TODO TODO TODO check that the number of chunks matches the data dimensions
+        logging.info("Writing main dataset...")
         self.hdu_group.create_dataset(self.name, data=self.data, chunks=tuple(args.chunks) if args.chunks else None)
         
         # write statistics
@@ -223,6 +233,11 @@ class Converter:
         
         
 def convert(args):
+    if args.quiet:
+        logging.basicConfig(level=logging.CRITICAL)
+    else:
+        logging.basicConfig(level=logging.DEBUG)
+    
     filedir, filename = os.path.split(args.filename)
     basefilename, _ = os.path.splitext(filename)
 
@@ -242,6 +257,7 @@ if __name__ == '__main__':
     parser.add_argument('--percentiles', nargs="+", help='Axes along which percentiles should be calculated, e.g. XY, Z, XYZ', default=tuple())
     parser.add_argument('--swizzles', nargs="+", help='Axes for which swizzled datasets should be written, e.g. ZYXW', default=tuple())
     parser.add_argument('--output-dir', help="Output directory. By default, the directory of the original file will be used.")
+    parser.add_argument('--quiet', action='store_true', help="Suppress all print output.")
     # TODO if we want to split out stokes, we should pass in a stokes parameter
     args = parser.parse_args()
     
