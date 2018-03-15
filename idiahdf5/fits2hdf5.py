@@ -1,13 +1,18 @@
-from astropy.io import fits
-import h5py
-import numpy as np
 import warnings
-import argparse
 import os
 import re
 import itertools
 import logging
 
+import numpy as np
+
+from astropy.io import fits
+import h5py
+
+try:
+    from mpi4py import MPI
+except ModuleNotFoundError:
+    MPI = None
 
 # helper class storing state for an original or swizzled dataset
 class Dataset:
@@ -146,7 +151,25 @@ class Dataset:
         
         axis = self.swizzle_axis_numeric(axis_name)
         swizzled = self.hdu_group.require_group("SwizzledData")
-        swizzled.create_dataset(axis_name, data=np.transpose(self.data, axis))
+        
+        swizzled_data = np.transpose(self.data, axis)
+        
+        if MPI:
+            swizzled_dataset = swizzled.create_dataset(axis_name, shape=swizzled_data.shape, dtype=swizzled_data.dtype)
+            
+            rank = MPI.COMM_WORLD.rank
+            nprocs = MPI.COMM_WORLD.size
+            
+            # parallel write
+            print("my rank is %d" % rank)
+            for i, slyce in enumerate(swizzled_data):
+                print("i = %d" % i)
+                if i % nprocs == rank:
+                    print("writing slice %d from process %d" % (i, rank))
+                    swizzled_dataset[i] = slyce
+                    
+        else:
+            swizzled.create_dataset(axis_name, data=swizzled_data)
     
     def write(self, args):
         # write this dataset
@@ -227,7 +250,10 @@ class Converter:
         
     def __enter__(self):
         self.fits = fits.open(self.fitsname)
-        self.hdf5 = h5py.File(self.hdf5name, "w")
+        if MPI:
+            self.hdf5 = h5py.File(self.hdf5name, "w", driver="mpio", comm=MPI.COMM_WORLD)
+        else:
+            self.hdf5 = h5py.File(self.hdf5name, "w")
             
         return self
         
