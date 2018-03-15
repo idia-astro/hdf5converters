@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 from astropy.io import fits
 import h5py
 import numpy as np
@@ -259,17 +258,4 @@ def convert(args):
         converter.convert(args)
 
 
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser()
-    parser.add_argument('filename', help='Input filename')
-    parser.add_argument('--chunks', nargs="+", type=int, help='Chunks to use, order: Z Y X')
-    parser.add_argument('--statistics', nargs="+", help='Axes along which statistics should be calculated, e.g. XY, Z, XYZ', default=tuple())
-    parser.add_argument('--histograms', nargs="+", help='Axes along which histograms should be calculated, e.g. XY, Z, XYZ', default=tuple())
-    parser.add_argument('--percentiles', nargs="+", help='Axes along which percentiles should be calculated, e.g. XY, Z, XYZ', default=tuple())
-    parser.add_argument('--swizzles', nargs="+", help='Axes for which swizzled datasets should be written, e.g. ZYXW', default=tuple())
-    parser.add_argument('--output-dir', help="Output directory. By default, the directory of the original file will be used.")
-    parser.add_argument('--quiet', action='store_true', help="Suppress all print output.")
-    # TODO if we want to split out stokes, we should pass in a stokes parameter
-    args = parser.parse_args()
-    
-    convert(args)
+

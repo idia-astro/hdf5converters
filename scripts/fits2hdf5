@@ -4,8 +4,10 @@ import argparse
 from idiahdf5.fits2hdf5 import convert
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(description="Tool for converting FITS images to the HDF5 format using the IDIA schema. Only the primary HDU is converted. The dimensions of the original image are preserved. Additional cached datasets may be stored in the file, as described in the options below.")
+    
     parser.add_argument('filename', help='Input filename')
+    
     parser.add_argument('--chunks', nargs="+", type=int, help='Chunks to use, order: Z Y X')
     parser.add_argument('--statistics', nargs="+", help='Axes along which statistics should be calculated, e.g. XY, Z, XYZ', default=tuple())
     parser.add_argument('--histograms', nargs="+", help='Axes along which histograms should be calculated, e.g. XY, Z, XYZ', default=tuple())
@@ -13,7 +15,9 @@ if __name__ == '__main__':
     parser.add_argument('--swizzles', nargs="+", help='Axes for which swizzled datasets should be written, e.g. ZYXW', default=tuple())
     parser.add_argument('--output-dir', help="Output directory. By default, the directory of the original file will be used.")
     parser.add_argument('--quiet', action='store_true', help="Suppress all print output.")
+    
     # TODO if we want to split out stokes, we should pass in a stokes parameter
+    
     args = parser.parse_args()
     
     convert(args)
