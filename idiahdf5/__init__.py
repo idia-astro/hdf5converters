@@ -1,5 +1,5 @@
 import argparse
-import .fits2hdf5
+from . import fits2hdf5
 
 def hdf5_convert(filename, **kwargs):
     arguments = {
@@ -16,4 +16,4 @@ def hdf5_convert(filename, **kwargs):
     
     arguments.update(kwargs)
     args = argparse.Namespace(**arguments)
-    .fits2hdf5.convert(args)
+    fits2hdf5.convert(args)
