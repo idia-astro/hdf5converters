@@ -1,7 +1,7 @@
 import argparse
-from .fits2hdf5 import convert as f2h_convert
+import .fits2hdf5
 
-def convert(filename, **kwargs):
+def hdf5_convert(filename, **kwargs):
     arguments = {
         "filename": filename,
         "statistics": ["XYZ", "XY", "Z"],
@@ -16,4 +16,4 @@ def convert(filename, **kwargs):
     
     arguments.update(kwargs)
     args = argparse.Namespace(**arguments)
-    f2h_convert(args)
+    .fits2hdf5.convert(args)
