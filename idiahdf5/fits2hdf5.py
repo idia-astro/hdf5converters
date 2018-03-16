@@ -22,6 +22,7 @@ class Dataset:
         self.axes = axes
         self._reverse_axes = list(reversed(axes))
         self.data = data
+        self.little_endian_dtype = data.dtype.newbyteorder('L')
         
     def axis_numeric(self, axis_name):
         """Convert named axes to numeric axes, relative to this dataset
@@ -143,6 +144,10 @@ class Dataset:
         stats.create_dataset("PERCENTILES", data=np.transpose(percentile_values, list(range(percentile_values.ndim))[1:] + [0]), dtype='float32')
         
     def write_swizzled_dataset(self, axis_name):
+        if 'W' in axis_name and 'W' not in self.axes:
+            axis_name = axis_name.replace('W', '')
+            logging.warning("Trying to coerce swizzle axes to data axes. New swizzle axis: %s." % axis_name)
+        
         if len(axis_name) != len(self.axes) or not all(d in self.axes for d in axis_name):
             logging.warning("Could not swizzle %s dataset to %s." % (self.axes, axis_name))
             return
@@ -155,7 +160,7 @@ class Dataset:
         swizzled_data = np.transpose(self.data, axis)
         
         if MPI:
-            swizzled_dataset = swizzled.create_dataset(axis_name, shape=swizzled_data.shape, dtype=swizzled_data.dtype)
+            swizzled_dataset = swizzled.create_dataset(axis_name, shape=swizzled_data.shape, dtype=self.little_endian_dtype)
             
             rank = MPI.COMM_WORLD.rank
             nprocs = MPI.COMM_WORLD.size
@@ -169,13 +174,13 @@ class Dataset:
                     swizzled_dataset[i] = slyce
                     
         else:
-            swizzled.create_dataset(axis_name, data=swizzled_data)
+            swizzled.create_dataset(axis_name, data=np.transpose(self.data, axis), dtype=self.little_endian_dtype)
     
     def write(self, args):
         # write this dataset
         # TODO TODO TODO check that the number of chunks matches the data dimensions
         logging.info("Writing main dataset...")
-        self.hdu_group.create_dataset(self.name, data=self.data, chunks=tuple(args.chunks) if args.chunks else None)
+        self.hdu_group.create_dataset(self.name, data=self.data, dtype=self.little_endian_dtype, chunks=tuple(args.chunks) if args.chunks else None)
         
         # write statistics
         for axis_name in args.statistics:

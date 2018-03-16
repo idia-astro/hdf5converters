@@ -7,7 +7,7 @@ def hdf5_convert(filename, **kwargs):
         "statistics": ["XYZ", "XY", "Z"],
         "histograms": ["XYZ", "XY"],
         "percentiles": ["XYZ", "XY"],
-        "swizzles": ["XYZW"],
+        "swizzles": ["ZYXW"],
         
         "quiet": True,
         "output_dir": None,
