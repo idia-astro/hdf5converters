@@ -1,8 +1,26 @@
 # hdf5converters
-Python scripts to convert FITS and CASA images to HDF5 images using the LOFAR structure
+Python module to convert FITS images to HDF5 images using the [custom IDIA schema](https://github.com/idia-astro/hdf5converters/wiki/HDF5-Image-Schema).
 
-## `fitsToHDF5_LOFAR.py`
-`fitsToHDF5_LOFAR.py` converts a single 3D FITS file to the LOFAR-USG-ICD-004 data structure. Currently, the correct metadata is not written to file, but the file structure is created correctly, and an optional  `StokesCoordinates` attribute is written to the `PolarizationCoordinate` sub-group to identify which (if any) Stokes coordinate the dataset refers to. Metadata from the input FITS file is used to populate attributes of the relevant groups, but attribute names may differ from the LOFAR-USG-ICD-004 standard.
+## Executable scripts
 
-## `fitsToHDF5_LOFAR_4D.py`
-`fitsToHDF5_LOFAR_4D.py` converts a list of 3D FITS files to a modified LOFAR-USG-ICD-004 data structure. Currently, the correct metadata is not written to file, but a `MultiStokes` flag and a list of the included Stokes coordinates in the form of the `StokesCoordinates` attribute are written to the `PolarizationCoordinate` sub-group to identify which Stokes coordinates the dataset includes. Metadata from the input FITS files is used to populate attributes of the relevant groups, but attribute names may differ from the LOFAR-USG-ICD-004 standard.
+`fits2hdf5` converts a single FITS file to HDF5 using the IDIA schema. The original data and a selection of header attributes are copied, and configurable statistics and swizzled datasets may also be written. Currently only the primary HDU from the original file is processed. To see a list of commandline parameters:
+
+    fits2hdf5 --help
+
+## Module
+
+To use this converter from a Python script or notebook, use the `hdf5_convert` helper function, which automatically passes certain default parameters to the converter. The only required argument to this function is the filename:
+
+    from idiahdf5 import hdf5_convert
+    hdf5_convert("yourfilenamehere.fits")
+
+The default parameters can be overridden with keyword arguments passed after the filename. For example, you can change the output directory (by default the files will be written to the same directory as the original files):
+
+    from idiahdf5 import hdf5_convert
+    hdf5_convert("yourfilenamehere.fits", output_dir="/path/to/some/dir/here")
+
+You can also bypass the helper function and call the underlying converter function directly, but you are then responsible for constructing the full argument object expected by the function (which should be an `argparse.Namespace` object or another object with a compatible interface):
+
+    from idiahdf5.fits2hdf5 import convert
+    # construct the args object however you like
+    convert(args)

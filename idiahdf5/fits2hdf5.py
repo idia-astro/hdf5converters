@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 from astropy.io import fits
 import h5py
 import numpy as np
@@ -18,6 +17,7 @@ class Dataset:
         self.axes = axes
         self._reverse_axes = list(reversed(axes))
         self.data = data
+        self.little_endian_dtype = data.dtype.newbyteorder('L')
         
     def axis_numeric(self, axis_name):
         """Convert named axes to numeric axes, relative to this dataset
@@ -139,6 +139,10 @@ class Dataset:
         stats.create_dataset("PERCENTILES", data=np.transpose(percentile_values, list(range(percentile_values.ndim))[1:] + [0]), dtype='float32')
         
     def write_swizzled_dataset(self, axis_name):
+        if 'W' in axis_name and 'W' not in self.axes:
+            axis_name = axis_name.replace('W', '')
+            logging.warning("Trying to coerce swizzle axes to data axes. New swizzle axis: %s." % axis_name)
+        
         if len(axis_name) != len(self.axes) or not all(d in self.axes for d in axis_name):
             logging.warning("Could not swizzle %s dataset to %s." % (self.axes, axis_name))
             return
@@ -147,13 +151,13 @@ class Dataset:
         
         axis = self.swizzle_axis_numeric(axis_name)
         swizzled = self.hdu_group.require_group("SwizzledData")
-        swizzled.create_dataset(axis_name, data=np.transpose(self.data, axis))
+        swizzled.create_dataset(axis_name, data=np.transpose(self.data, axis), dtype=self.little_endian_dtype)
     
     def write(self, args):
         # write this dataset
         # TODO TODO TODO check that the number of chunks matches the data dimensions
         logging.info("Writing main dataset...")
-        self.hdu_group.create_dataset(self.name, data=self.data, chunks=tuple(args.chunks) if args.chunks else None)
+        self.hdu_group.create_dataset(self.name, data=self.data, dtype=self.little_endian_dtype, chunks=tuple(args.chunks) if args.chunks else None)
         
         # write statistics
         for axis_name in args.statistics:
@@ -259,17 +263,4 @@ def convert(args):
         converter.convert(args)
 
 
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser()
-    parser.add_argument('filename', help='Input filename')
-    parser.add_argument('--chunks', nargs="+", type=int, help='Chunks to use, order: Z Y X')
-    parser.add_argument('--statistics', nargs="+", help='Axes along which statistics should be calculated, e.g. XY, Z, XYZ', default=tuple())
-    parser.add_argument('--histograms', nargs="+", help='Axes along which histograms should be calculated, e.g. XY, Z, XYZ', default=tuple())
-    parser.add_argument('--percentiles', nargs="+", help='Axes along which percentiles should be calculated, e.g. XY, Z, XYZ', default=tuple())
-    parser.add_argument('--swizzles', nargs="+", help='Axes for which swizzled datasets should be written, e.g. ZYXW', default=tuple())
-    parser.add_argument('--output-dir', help="Output directory. By default, the directory of the original file will be used.")
-    parser.add_argument('--quiet', action='store_true', help="Suppress all print output.")
-    # TODO if we want to split out stokes, we should pass in a stokes parameter
-    args = parser.parse_args()
-    
-    convert(args)
+
