@@ -139,6 +139,10 @@ class Dataset:
         stats.create_dataset("PERCENTILES", data=np.transpose(percentile_values, list(range(percentile_values.ndim))[1:] + [0]), dtype='float32')
         
     def write_swizzled_dataset(self, axis_name):
+        if 'W' in axis_name and 'W' not in self.axes:
+            axis_name = axis_name.replace('W', '')
+            logging.warning("Trying to coerce swizzle axes to data axes. New swizzle axis: %s." % axis_name)
+        
         if len(axis_name) != len(self.axes) or not all(d in self.axes for d in axis_name):
             logging.warning("Could not swizzle %s dataset to %s." % (self.axes, axis_name))
             return
