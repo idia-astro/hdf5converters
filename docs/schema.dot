@@ -1,0 +1,85 @@
+digraph {
+    rankdir=LR
+    
+    node [style=filled fillcolor=olivedrab3]
+    file [label="/"]
+    0
+    SwizzledData
+    MipMaps
+    mmDATA [label="DATA"]
+    mmZYXW [label="ZYXW"]
+    mmMEAN_Z [label="MEAN_Z"]
+    Statistics
+    XY
+    Z
+    XYZ
+    Group
+    
+    node [shape=octagon fillcolor=khaki1]
+    VERSION
+    BUNIT
+    NAXIS
+    other_attrs [label="..."]
+    Attribute
+    
+    node [shape=box fillcolor=lightblue2]
+    DATA
+    COMMENT
+    HISTORY
+    PERCENTILE_RANKS
+    ZYXW
+    DATA_XY_2
+    DATA_XY_4
+    MEAN
+    MAX
+    MIN
+    NAN_COUNT
+    PERCENTILES
+    HISTOGRAM
+    HIST_MIN
+    HIST_MAX
+    Dataset
+
+    file -> VERSION
+    file -> 0
+    
+    0 -> DATA
+    
+    0 -> COMMENT
+    0 -> HISTORY
+    0 -> PERCENTILE_RANKS
+    
+    0 -> BUNIT
+    0 -> NAXIS
+    0 -> other_attrs
+    
+    0 -> SwizzledData
+    SwizzledData -> ZYXW
+    
+    0 -> MipMaps
+    MipMaps -> mmDATA
+    mmDATA -> DATA_XY_2
+    mmDATA -> DATA_XY_4
+    MipMaps -> mmZYXW
+    MipMaps -> mmMEAN_Z
+    
+    0 -> Statistics
+    Statistics -> XY
+    XY -> MEAN
+    XY -> MAX
+    XY -> MIN
+    XY -> NAN_COUNT
+    XY -> PERCENTILES
+    XY -> HISTOGRAM
+    XY -> HIST_MIN
+    XY -> HIST_MAX
+    Statistics -> Z
+    Statistics -> XYZ
+    
+    subgraph cluster_legend {
+        label="Legend"
+        Group
+        Attribute
+        Dataset
+    }
+}
