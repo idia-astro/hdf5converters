@@ -195,6 +195,8 @@ class Dataset:
         # write swizzled datasets
         for axis_name in args.swizzles:
             self.write_swizzled_dataset(axis_name)
+        
+        logging.info("Done!")
             
 
 class HDUGroup:
