@@ -11,8 +11,28 @@ import h5py
 
 try:
     from mpi4py import MPI
+    
+    rank = MPI.COMM_WORLD.rank
+    nprocs = MPI.COMM_WORLD.size
+    
+    def write_dataset(group, name, data, dtype=None, chunks=None):
+        print("Trying to write %s from process %d" % (name, rank))
+        dataset = group.create_dataset(name, shape=data.shape, dtype=dtype or data.dtype, chunks=chunks)
+        
+        for i, slyce in enumerate(data):
+            if i % nprocs == rank:
+                print("Trying to write slice %d from process %d" % (i, rank))
+                dataset[i] = slyce
+                
+        print("Process %d has finished writing %s" % (rank, name))
+
 except ModuleNotFoundError:
     MPI = None
+    
+    def write_dataset(group, name, data, dtype=None, chunks=None):
+        group.create_dataset(name, data=data, dtype=dtype, chunks=chunks)
+    
+
 
 # helper class storing state for an original or swizzled dataset
 class Dataset:
@@ -62,11 +82,11 @@ class Dataset:
         with warnings.catch_warnings():
             # nanmean, etc. print a warning for empty slices, i.e. planes full of nans, but give the correct answer (nan).
             warnings.simplefilter("ignore", category=RuntimeWarning)
-            stats.create_dataset("MEAN", data=np.nanmean(self.data, axis=axis))
-            stats.create_dataset("MIN", data=np.nanmin(self.data, axis=axis))
-            stats.create_dataset("MAX", data=np.nanmax(self.data, axis=axis))
+            write_dataset(stats, "MEAN", np.nanmean(self.data, axis=axis))
+            write_dataset(stats, "MIN", np.nanmin(self.data, axis=axis))
+            write_dataset(stats, "MAX", np.nanmax(self.data, axis=axis))
             
-        stats.create_dataset("NAN_COUNT", data=np.count_nonzero(np.isnan(self.data), axis=axis))
+        write_dataset(stats, "NAN_COUNT", np.count_nonzero(np.isnan(self.data), axis=axis))
         
     def write_histogram(self, axis_name):
         if not all(d in self.axes for d in axis_name):
@@ -112,7 +132,7 @@ class Dataset:
             else:
                 bins[tuple(bin_index)] = np.nan
 
-        stats.create_dataset("HISTOGRAM", data=bins, dtype='int64')
+        write_dataset(stats, "HISTOGRAM", bins, dtype='int64')
     
     def write_percentiles(self, axis_name):
         if not all(d in self.axes for d in axis_name):
@@ -132,7 +152,7 @@ class Dataset:
         logging.info("Writing percentiles for axis %s..." % axis_name)
         
         if "PERCENTILE_RANKS" not in self.hdu_group:
-            self.hdu_group.create_dataset("PERCENTILE_RANKS", data=percentiles, dtype='float32')
+            write_dataset(self.hdu_group, "PERCENTILE_RANKS", percentiles, dtype='float32')
         
         stats = self.hdu_group.require_group("Statistics/%s" % axis_name)
         
@@ -141,7 +161,7 @@ class Dataset:
             warnings.simplefilter("ignore", category=RuntimeWarning)
             percentile_values = np.nanpercentile(self.data, percentiles, axis=axis)
         
-        stats.create_dataset("PERCENTILES", data=np.transpose(percentile_values, list(range(percentile_values.ndim))[1:] + [0]), dtype='float32')
+        write_dataset(stats, "PERCENTILES", np.transpose(percentile_values, list(range(percentile_values.ndim))[1:] + [0]), dtype='float32')
         
     def write_swizzled_dataset(self, axis_name):
         if 'W' in axis_name and 'W' not in self.axes:
@@ -157,30 +177,13 @@ class Dataset:
         axis = self.swizzle_axis_numeric(axis_name)
         swizzled = self.hdu_group.require_group("SwizzledData")
         
-        swizzled_data = np.transpose(self.data, axis)
+        write_dataset(swizzled, axis_name, np.transpose(self.data, axis), dtype=self.little_endian_dtype)
         
-        if MPI:
-            swizzled_dataset = swizzled.create_dataset(axis_name, shape=swizzled_data.shape, dtype=self.little_endian_dtype)
-            
-            rank = MPI.COMM_WORLD.rank
-            nprocs = MPI.COMM_WORLD.size
-            
-            # parallel write
-            print("my rank is %d" % rank)
-            for i, slyce in enumerate(swizzled_data):
-                print("i = %d" % i)
-                if i % nprocs == rank:
-                    print("writing slice %d from process %d" % (i, rank))
-                    swizzled_dataset[i] = slyce
-                    
-        else:
-            swizzled.create_dataset(axis_name, data=np.transpose(self.data, axis), dtype=self.little_endian_dtype)
-    
     def write(self, args):
         # write this dataset
         # TODO TODO TODO check that the number of chunks matches the data dimensions
         logging.info("Writing main dataset...")
-        self.hdu_group.create_dataset(self.name, data=self.data, dtype=self.little_endian_dtype, chunks=tuple(args.chunks) if args.chunks else None)
+        write_dataset(self.hdu_group, self.name, self.data, dtype=self.little_endian_dtype, chunks=tuple(args.chunks) if args.chunks else None)
         
         # write statistics
         for axis_name in args.statistics:
@@ -236,10 +239,10 @@ class HDUGroup:
         self.copy_attrs(hdu_group, attrs_to_copy)
 
         if 'HISTORY' in self.header:
-            hdu_group.create_dataset('HISTORY', data=[np.string_(val) for val in self.header['HISTORY']])
+            write_dataset(hdu_group, 'HISTORY', data=np.array(self.header['HISTORY'], dtype='S'))
             
         if 'COMMENT' in self.header:
-            hdu_group.create_dataset('COMMENT', data=[np.string_(val) for val in self.header['COMMENT']])
+            write_dataset(hdu_group, 'COMMENT', data=np.array(self.header['COMMENT'], dtype='S'))
             
         num_axes = self.header["NAXIS"]
         
