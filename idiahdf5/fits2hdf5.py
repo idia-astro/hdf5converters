@@ -235,10 +235,7 @@ class Converter:
         
     def __enter__(self):
         self.fits = fits.open(self.fitsname)
-        if MPI:
-            self.hdf5 = h5py.File(self.hdf5name, "w", driver="mpio", comm=MPI.COMM_WORLD)
-        else:
-            self.hdf5 = h5py.File(self.hdf5name, "w")
+        self.hdf5 = h5py.File(self.hdf5name, "w")
             
         return self
         
