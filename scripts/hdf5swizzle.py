@@ -34,7 +34,7 @@ def three(data, dataset):
     w = rank
     dataset[w] = np.transpose(data[w], (2, 1, 0)).copy()
     
-# collective
+# collective -- slightly slower
 def three_collective(data, dataset):
     w = rank
     with dataset.collective:
@@ -53,7 +53,7 @@ def four(data, dataset):
     
     dataset[w] = swizzled_data_w
     
-# read into memory *and* write transpose to memory -- doesn't seem to help; slightly slowertop
+# read into memory *and* write transpose to memory -- doesn't seem to help; slightly slower
 
 def five(data, dataset):
     w = rank
