@@ -18,7 +18,7 @@ drop_caches
 
 # convert with swizzled data and time
 echo "Serial swizzle (includes write of original dataset)"
-time fits2hdf5 --swizzles ZYXW -- $filename
+/usr/bin/time -v fits2hdf5 --swizzles ZYXW -- $filename
 
 # save a serially swizzled copy to compare for correctness
 mv $hdf5filename serial_reference.hdf5
@@ -36,7 +36,7 @@ do
     
     # time parallel swizzle
     drop_caches
-    time mpiexec -n $nprocs hdf5swizzle.py test.hdf5 $funcname
+    /usr/bin/time -v mpiexec -n $nprocs hdf5swizzle.py test.hdf5 $funcname
     
     # check for correctness
     if `h5diff serial_reference.hdf5 test.hdf5 0/SwizzledData/ZYXW &> /dev/null`
