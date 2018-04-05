@@ -73,6 +73,10 @@ class Swizzler:
             #data_w[z] = data[w][z].copy()
             #data_w[z] = data[w, z, :, :]
             #data_w[z] = data[w, z, :, :].copy()
+            n_elem = data[w][z].size
+            size_b = n_elem * 4
+            size_g = size_b / 1024**3
+            print("Process %d: I think the size of this read will be %d x 4b = %fG." % (rank, n_elem, size_g))
             data_w_z = data[w][z].copy()
             data_w[z] = data_w_z
             
