@@ -69,7 +69,7 @@ class Swizzler:
         
         # read one z at a time
         for z in range(Z):
-            data_w[z] = data[w, z, :, :]
+            data_w[z] = data[w, z, :, :].copy()
             
         # swizzle whole w by transposing and copying
         swizzled_data_w = np.transpose(data[w], (2, 1, 0)).copy()
