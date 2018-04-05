@@ -70,9 +70,12 @@ class Swizzler:
         # read one z at a time
         for z in range(Z):
             #data_w[z] = data[w][z]
-            data_w[z] = data[w][z].copy()
+            #data_w[z] = data[w][z].copy()
             #data_w[z] = data[w, z, :, :]
             #data_w[z] = data[w, z, :, :].copy()
+            data_w_z = data[w][z].copy()
+            data_w[z] = data_w_z
+            
             
         # swizzle whole w by transposing and copying
         swizzled_data_w = np.transpose(data[w], (2, 1, 0)).copy()
@@ -80,9 +83,8 @@ class Swizzler:
         # write one x at a time
         for x in range(X):
             dataset[w, x, :, :] = swizzled_data_w[x, :, :]
-            
-        
 
+        
 
 def swizzle(filename, funcname): # for this prototype assume XYZW -> ZYXW
     with h5py.File(filename, 'r+', driver='mpio', comm=MPI.COMM_WORLD) as f:
