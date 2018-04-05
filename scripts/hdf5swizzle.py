@@ -59,7 +59,7 @@ class Swizzler:
         w = rank
         dataset[w] = np.transpose(data[w].copy(), (2, 1, 0)).copy()
         
-    # get around 2G limitation -- any slower?
+    # trying to get around the 2G limitation
     @staticmethod
     def six(data, dataset):
         W, Z, Y, X = data.shape
@@ -69,7 +69,10 @@ class Swizzler:
         
         # read one z at a time
         for z in range(Z):
-            data_w[z] = data[w][z]
+            #data_w[z] = data[w][z]
+            data_w[z] = data[w][z].copy()
+            #data_w[z] = data[w, z, :, :]
+            #data_w[z] = data[w, z, :, :].copy()
             
         # swizzle whole w by transposing and copying
         swizzled_data_w = np.transpose(data[w], (2, 1, 0)).copy()
@@ -77,6 +80,8 @@ class Swizzler:
         # write one x at a time
         for x in range(X):
             dataset[w, x, :, :] = swizzled_data_w[x, :, :]
+            
+        
 
 
 def swizzle(filename, funcname): # for this prototype assume XYZW -> ZYXW
