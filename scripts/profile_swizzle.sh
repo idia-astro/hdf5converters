@@ -1,7 +1,7 @@
 #!/bin/bash
 
-filename=$1
-nprocs=$2
+filename=$1; shift
+nprocs=$1; shift
 
 hdf5filename="${filename%.fits}.hdf5"
 
@@ -26,7 +26,7 @@ mv $hdf5filename serial_reference.hdf5
 # convert without swizzled data
 fits2hdf5 $filename
 
-for funcname in "serial" "one" "two" "three" "three_collective" "four" "five"
+for funcname in $@
 do
     echo -e "\n-------------------------------\nSwizzle with function $funcname"
     
@@ -36,7 +36,7 @@ do
     
     # time parallel swizzle
     drop_caches
-    /usr/bin/time -v mpiexec -n $nprocs hdf5swizzle.py test.hdf5 $funcname
+    /usr/bin/time -v mpiexec --mca orte_base_help_aggregate 0 -n $nprocs hdf5swizzle.py test.hdf5 $funcname
     
     # check for correctness
     if `h5diff serial_reference.hdf5 test.hdf5 0/SwizzledData/ZYXW &> /dev/null`
