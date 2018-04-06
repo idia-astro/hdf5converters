@@ -1,3 +1,3 @@
 #!/bin/bash
 
-fits2hdf5 --statistics XY XYZ Z --percentiles XY XYZ --statistics XY XYZ --swizzles ZYXW $@
+fits2hdf5 --statistics XY XYZ Z --percentiles XY XYZ --histograms XY XYZ --swizzles ZYXW $@
