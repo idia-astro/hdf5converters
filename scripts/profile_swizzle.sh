@@ -14,17 +14,16 @@ function drop_caches {
     sudo bash -c 'echo 3 > /proc/sys/vm/drop_caches'
 }
 
-drop_caches
-
-# convert with swizzled data and time
-echo "Serial swizzle (includes write of original dataset)"
-/usr/bin/time -v fits2hdf5 --swizzles ZYXW -- $filename
-
-# save a serially swizzled copy to compare for correctness
-mv $hdf5filename serial_reference.hdf5
-
-# convert without swizzled data
+# convert without swizzling
+echo "Convert FITS to HDF5"
 fits2hdf5 $filename
+
+# time serial swizzling and save a serially swizzled copy to compare for correctness
+cp $hdf5filename serial_reference.hdf5
+echo "Time serial swizzle"
+
+drop_caches
+/usr/bin/time -v hdf5swizzle_serial.py serial_reference.hdf5
 
 for funcname in $@
 do
