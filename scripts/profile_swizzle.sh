@@ -20,10 +20,16 @@ fits2hdf5 $filename
 
 # time serial swizzling and save a serially swizzled copy to compare for correctness
 cp $hdf5filename serial_reference.hdf5
-echo "Time serial swizzle"
 
+echo "Time serial swizzle -- no copy"
 drop_caches
-/usr/bin/time -v hdf5swizzle_serial.py serial_reference.hdf5
+/usr/bin/time -v hdf5swizzle_serial.py serial_reference.hdf5 no_copy
+
+cp $hdf5filename serial_reference.hdf5
+
+echo "Time serial swizzle -- with copy"
+drop_caches
+/usr/bin/time -v hdf5swizzle_serial.py serial_reference.hdf5 with_copy
 
 for funcname in $@
 do

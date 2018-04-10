@@ -4,6 +4,7 @@ import h5py
 import numpy as np
 from mpi4py import MPI
 import sys
+import itertools
 
 rank = MPI.COMM_WORLD.rank
 nprocs = MPI.COMM_WORLD.size
@@ -77,6 +78,31 @@ class Swizzler:
         # write one x at a time
         for x in range(X):
             dataset[w, x, :, :] = swizzled_data_w[x, :, :]
+            
+    # read and write individual channels; each process reads contiguous pieces
+    @staticmethod
+    def seven(data, dataset):
+        W, Z, Y, X = data.shape
+        
+        num_channels = W * Z
+        per_proc = int(np.ceil(num_channels / nprocs))
+        
+        range_min = rank * per_proc
+        range_max = (rank + 1) * per_proc
+        
+        for i, (w, z) in itertools.takewhile(lambda x: x[0] < range_max, itertools.dropwhile(lambda x: x[0] < range_min, enumerate(itertools.product(range(W), range(Z))))):
+            for y in range(Y):
+                dataset[w, :, y, z] = data[w, z, y, :]
+            
+    # read and write individual channels; each process reads a stride
+    @staticmethod
+    def eight(data, dataset):
+        W, Z, Y, X = data.shape
+        
+        for i, (w, z) in itertools.filterfalse(lambda x: x[0] % nprocs != rank, enumerate(itertools.product(range(W), range(Z)))):
+            for y in range(Y):
+                dataset[w, :, y, z] = data[w, z, y, :]
+
 
         
 
