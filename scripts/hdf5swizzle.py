@@ -91,8 +91,7 @@ class Swizzler:
         range_max = (rank + 1) * per_proc
         
         for i, (w, z) in itertools.takewhile(lambda x: x[0] < range_max, itertools.dropwhile(lambda x: x[0] < range_min, enumerate(itertools.product(range(W), range(Z))))):
-            for y in range(Y):
-                dataset[w, :, y, z] = data[w, z, y, :]
+            dataset[w, :, :, z] = np.transpose(data[w, z, :, :], (1, 0))
             
     # read and write individual channels; each process reads a stride
     @staticmethod
@@ -100,8 +99,7 @@ class Swizzler:
         W, Z, Y, X = data.shape
         
         for i, (w, z) in itertools.filterfalse(lambda x: x[0] % nprocs != rank, enumerate(itertools.product(range(W), range(Z)))):
-            for y in range(Y):
-                dataset[w, :, y, z] = data[w, z, y, :]
+            dataset[w, :, :, z] = np.transpose(data[w, z, :, :], (1, 0))
 
 
         
