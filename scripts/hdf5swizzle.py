@@ -6,8 +6,9 @@ from mpi4py import MPI
 import sys
 import itertools
 
-rank = MPI.COMM_WORLD.rank
-nprocs = MPI.COMM_WORLD.size
+comm = MPI.COMM_WORLD
+rank = comm.rank
+nprocs = comm.size
 
 class Swizzler:
     # copy of serial implementation
@@ -88,21 +89,22 @@ class Swizzler:
         per_proc = int(np.ceil(num_channels / nprocs))
         
         range_min = rank * per_proc
-        range_max = (rank + 1) * per_proc
+        range_max = min((rank + 1) * per_proc, W * Z)
+                
+        data_wz = np.empty((range_max - range_min, Y, X), dtype=data.dtype)
         
-        for i, (w, z) in itertools.takewhile(lambda x: x[0] < range_max, itertools.dropwhile(lambda x: x[0] < range_min, enumerate(itertools.product(range(W), range(Z))))):
-            dataset[w, :, :, z] = np.transpose(data[w, z, :, :], (1, 0))
-            
-    # read and write individual channels; each process reads a stride
-    @staticmethod
-    def eight(data, dataset):
-        W, Z, Y, X = data.shape
+        W_Z = list(itertools.product(range(W), range(Z)))
         
-        for i, (w, z) in itertools.filterfalse(lambda x: x[0] % nprocs != rank, enumerate(itertools.product(range(W), range(Z)))):
-            dataset[w, :, :, z] = np.transpose(data[w, z, :, :], (1, 0))
+        for i in range(len(data_wz)):
+            w, z = W_Z[range_min + i]
+            data_wz[i, :, :] = data[w, z, :, :]
+        
+        swizzled_data_wz = np.transpose(data_wz, (2, 1, 0)).copy()
+        
+        for i in range(len(data_wz)):
+            w, z = W_Z[range_min + i]
+            dataset[w, :, :, z] = swizzled_data_wz[:, :, i]
 
-
-        
 
 def swizzle(filename, funcname): # for this prototype assume XYZW -> ZYXW
     with h5py.File(filename, 'r+', driver='mpio', comm=MPI.COMM_WORLD) as f:
