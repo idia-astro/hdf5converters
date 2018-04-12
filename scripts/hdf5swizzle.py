@@ -56,6 +56,24 @@ class Swizzler:
         # write one x at a time
         for x in range(X):
             dataset[w, x, :, :] = swizzled_data_w[x, :, :]
+            
+    @staticmethod
+    def wz_nocopy2(data, dataset):
+        W, Z, Y, X = data.shape
+        w = rank
+        
+        data_w = np.empty((Z, Y, X), dtype=data.dtype)
+        
+        # read one z at a time
+        for z in range(Z):
+            data_w[z] = data[w,z,:,:]
+            
+        # swizzle whole w by transposing
+        swizzled_data_w = np.transpose(data_w, (2, 1, 0))
+        
+        # write one x at a time
+        for x in range(X):
+            dataset[w, x, :, :] = swizzled_data_w[x, :, :]
 
 
 def swizzle(filename, funcname): # for this prototype assume XYZW -> ZYXW
