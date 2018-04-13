@@ -15,6 +15,7 @@ if __name__ == '__main__':
     parser.add_argument('--swizzles', nargs="+", help='Axes for which swizzled datasets should be written, e.g. ZYXW', default=tuple())
     parser.add_argument('--output-dir', help="Output directory. By default, the directory of the original file will be used.")
     parser.add_argument('--quiet', action='store_true', help="Suppress all print output.")
+    parser.add_argument('--parallel', action='store_true', help="Use parallel features where possible (requires MPI).")
     
     # TODO if we want to split out stokes, we should pass in a stokes parameter
     

@@ -9,6 +9,8 @@ import numpy as np
 from astropy.io import fits
 import h5py
 
+from hdf5swizzle import swizzle
+
 # helper class storing state for an original or swizzled dataset
 class Dataset:
     def __init__(self, hdu_group, data, axes):
@@ -25,11 +27,11 @@ class Dataset:
         """
         return tuple(sorted(self._reverse_axes.index(l) for l in axis_name))
         
-    def swizzle_axis_numeric(self, axis_name):
-        """Convert named swizzle axes to numeric axes, relative to this dataset
-            e.g. if axes are XYZW, ZYXW -> (0, 3, 2, 1)
-        """
-        return tuple(self._reverse_axes.index(l) for l in reversed(axis_name))
+    #def swizzle_axis_numeric(self, axis_name):
+        #"""Convert named swizzle axes to numeric axes, relative to this dataset
+            #e.g. if axes are XYZW, ZYXW -> (0, 3, 2, 1)
+        #"""
+        #return tuple(self._reverse_axes.index(l) for l in reversed(axis_name))
     
     def max_bins(self):
         """Limit the number of histogram bins to the root of the size of the largest product of two dimensions.
@@ -138,21 +140,21 @@ class Dataset:
         
         stats.create_dataset("PERCENTILES", data=np.transpose(percentile_values, list(range(percentile_values.ndim))[1:] + [0]), dtype='float32')
         
-    def write_swizzled_dataset(self, axis_name):
-        if 'W' in axis_name and 'W' not in self.axes:
-            axis_name = axis_name.replace('W', '')
-            logging.warning("Trying to coerce swizzle axes to data axes. New swizzle axis: %s." % axis_name)
+    #def write_swizzled_dataset(self, axis_name):
+        #if 'W' in axis_name and 'W' not in self.axes:
+            #axis_name = axis_name.replace('W', '')
+            #logging.warning("Trying to coerce swizzle axes to data axes. New swizzle axis: %s." % axis_name)
         
-        if len(axis_name) != len(self.axes) or not all(d in self.axes for d in axis_name):
-            logging.warning("Could not swizzle %s dataset to %s." % (self.axes, axis_name))
-            return
+        #if len(axis_name) != len(self.axes) or not all(d in self.axes for d in axis_name):
+            #logging.warning("Could not swizzle %s dataset to %s." % (self.axes, axis_name))
+            #return
         
-        logging.info("Writing swizzled dataset %s..." % axis_name)
+        #logging.info("Writing swizzled dataset %s..." % axis_name)
         
-        axis = self.swizzle_axis_numeric(axis_name)
-        swizzled = self.hdu_group.require_group("SwizzledData")
+        #axis = self.swizzle_axis_numeric(axis_name)
+        #swizzled = self.hdu_group.require_group("SwizzledData")
         
-        swizzled.create_dataset(axis_name, data=np.transpose(self.data, axis), dtype=self.little_endian_dtype)
+        #swizzled.create_dataset(axis_name, data=np.transpose(self.data, axis), dtype=self.little_endian_dtype)
     
     def write(self, args):
         # write this dataset
@@ -169,12 +171,6 @@ class Dataset:
             
         for axis_name in args.percentiles:
             self.write_percentiles(axis_name)
-        
-        # write swizzled datasets
-        for axis_name in args.swizzles:
-            self.write_swizzled_dataset(axis_name)
-        
-        logging.info("Done!")
             
 
 class HDUGroup:
@@ -249,7 +245,8 @@ class Converter:
         primary = HDUGroup(self.hdf5, "0", self.fits[0])
         primary.write(args)
         
-        
+
+
 def convert(args):
     if args.quiet:
         logging.basicConfig(level=logging.CRITICAL)
@@ -264,6 +261,11 @@ def convert(args):
         
     with Converter(args.filename, output_filepath) as converter:
         converter.convert(args)
+        
+    # TODO: call swizzle function here; do everything inside the swizzle function?
+    swizzle(args)
+        
+    logging.info("Done!")
 
 
 
