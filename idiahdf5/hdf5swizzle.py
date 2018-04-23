@@ -2,12 +2,36 @@ import logging
 import numpy as np
 import h5py
 
-# TODO TODO TODO: move these to a different module called hdfswizzle.py
-# Call that module from a script called hdf5swizzle
-# Inside the script, autodetect XYZW -> ZYXW and use parallel for it -- call itself recursively with mpiexec; after handling all serial swizzles
-
 class Dataset:
-    pass # make this analogous to the converter dataset so that everything makes more sense
+    def __init__(self, hdu_group, data, axes):
+        self.hdu_group = hdu_group
+        self.axes = axes
+        self._reverse_axes = list(reversed(axes))
+        self.data = data
+        self.little_endian_dtype = data.dtype.newbyteorder('L')
+
+    def swizzle_axis_numeric(self, reversed_data_axes, axis_name):
+        """Convert named swizzle axes to numeric axes, relative to this dataset
+            e.g. if axes are XYZW, ZYXW -> (0, 3, 2, 1)
+        """
+        return tuple(self._reverse_axes.index(l) for l in reversed(axis_name))
+    
+    def write_swizzled_dataset(self, axis_name):
+        if 'W' in axis_name and 'W' not in self.axes:
+            axis_name = axis_name.replace('W', '')
+            logging.warning("Trying to coerce swizzle axes to data axes. New swizzle axis: %s." % axis_name)
+        
+        if len(axis_name) != len(self.axes) or not all(d in self.axes for d in axis_name):
+            logging.warning("Could not swizzle %s dataset to %s." % (self.axes, axis_name))
+            return
+        
+        logging.info("Writing swizzled dataset %s..." % axis_name)
+        
+        axis = self.swizzle_axis_numeric(axis_name)
+        swizzled = self.hdu_group.require_group("SwizzledData")
+        
+        swizzled.create_dataset(axis_name, data=np.transpose(self.data, axis), dtype=self.little_endian_dtype)
+
 
 class Swizzler:
     PARALLEL = ('ZYXW',)
@@ -22,16 +46,6 @@ class Swizzler:
     def __exit__(self, e_type, e_value, e_traceback):
         self.hdf5.close()
     
-    # TODO move to dataset
-    def swizzle_axis_numeric(self, reversed_data_axes, axis_name):
-        """Convert named swizzle axes to numeric axes, relative to this dataset
-            e.g. if axes are XYZW, ZYXW -> (0, 3, 2, 1)
-        """
-        return tuple(reversed_data_axes.index(l) for l in reversed(axis_name))
-    
-    # TODO move to dataset
-    def write_swizzled_dataset(self, axis_name):
-        pass
 
     def swizzle(self, args):
         primary_group = self.hdf5["0"]
