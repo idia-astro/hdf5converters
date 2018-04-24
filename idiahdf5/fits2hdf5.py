@@ -242,7 +242,7 @@ def convert(args):
         converter.convert(args)
         
     # Delegate swizzling to the swizzling module, which can recursively call itself in parallel
-    swizzle_args = argparse.namespace(
+    swizzle_args = argparse.Namespace(
         filename=output_filepath,
         swizzles=args.swizzles,
         quiet=args.quiet,
