@@ -3,6 +3,7 @@ import os
 import re
 import itertools
 import logging
+import argparse
 
 import numpy as np
 
@@ -239,9 +240,17 @@ def convert(args):
         
     with Converter(args.filename, output_filepath) as converter:
         converter.convert(args)
+        
+    # Delegate swizzling to the swizzling module, which can recursively call itself in parallel
+    swizzle_args = argparse.namespace(
+        filename=output_filepath,
+        swizzles=args.swizzles,
+        quiet=args.quiet,
+        parallel=args.parallel,
+        funcname=None
+    )
     
-    # Delegate swizzling to another module, which can recursively call itself in parallel
-    swizzle(args)
+    swizzle(swizzle_args)
         
     logging.info("Done!")
 
