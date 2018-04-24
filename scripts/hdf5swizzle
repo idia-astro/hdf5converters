@@ -1,0 +1,21 @@
+#!/usr/bin/env python3
+
+import argparse
+from idiahdf5.hdf5swizzle import swizzle
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description="Tool for writing swizzled datasets to a HDF5 file using the IDIA schema. The swizzled datasets are written to the same file as the original data is read from.")
+    
+    parser.add_argument('filename', help='Input and output filename')
+    
+    parser.add_argument('--swizzles', nargs="+", help='Axes for which swizzled datasets should be written, e.g. ZYXW', default=tuple())
+    parser.add_argument('--quiet', action='store_true', help="Suppress all print output.")
+    parser.add_argument('--parallel', action='store_true', help="Use parallel features where possible (requires MPI).")
+    
+    # Internal flag used when this script is called recursively with mpi
+    parser.add_argument('--funcname', help=argparse.SUPPRESS)
+        
+    args = parser.parse_args()
+    
+    swizzle(args)
+
