@@ -13,8 +13,8 @@ class Swizzler:
         
         self.data = self.hdf5["0"]["DATA"]
         # TODO: this is good enough for now, but we should look for a more robust way to detect the order
-        self.axes = "XYZW"[:len(data.shape)]
-        self._reverse_axes = list(reversed(axes))
+        self.axes = "XYZW"[:len(self.data.shape)]
+        self._reverse_axes = list(reversed(self.axes))
         
         return self
         
@@ -48,7 +48,7 @@ class Swizzler:
         
         for axis_name in args.swizzles:
             if args.parallel:
-                parallel_params = SwizzlerParallel.implemented(data, axis_name)
+                parallel_params = SwizzlerParallel.implemented(self.data, axis_name)
                 if parallel_params:
                     logging.info("Deferring %s swizzling to parallel implementation..." % axis_name)
                     self.parallel_todo.append(parallel_params) # leave until afterwards
@@ -62,12 +62,12 @@ class SwizzlerParallel(Swizzler):
     @classmethod
     def implemented(cls, data, swizzled_axes):
         # only one case for now; may extend later
-        if data.ndim == 4 and data.shape[0] > 1 and swizzled_axes = "ZYXW":
+        if data.ndim == 4 and data.shape[0] > 1 and swizzled_axes == "ZYXW":
             return ('swizzle_ZYXW', data.shape[0]) # function to call and number of processes needed
         return None
 
     def __init__(self, hdf5name):
-        super(SerialSwizzler, self).__init__(hdf5name, {})
+        super(SwizzlerParallel, self).__init__(hdf5name)
 
     def __enter__(self):
         from mpi4py import MPI
@@ -107,7 +107,7 @@ def swizzle(args):
     if args.funcname:
         # If we have a function name, this is being called recursively with MPI -- run the function and exit
         # We call each parallel swizzle individually, in case we want to execute them with different numbers of processes
-        with ParallelSwizzler(args.filename) as swizzler:
+        with SwizzlerParallel(args.filename) as swizzler:
             logging.debug("Process %d swizzling with function %s..." % (swizzler.rank, args.funcname))
             getattr(swizzler, args.funcname)()
             
