@@ -21,7 +21,7 @@ class Swizzler:
     def __exit__(self, e_type, e_value, e_traceback):
         self.hdf5.close()
     
-    def swizzle_axis_numeric(self, reversed_data_axes, axis_name):
+    def swizzle_axis_numeric(self, axis_name):
         """Convert named swizzle axes to numeric axes, relative to this dataset
             e.g. if axes are XYZW, ZYXW -> (0, 3, 2, 1)
         """
@@ -41,7 +41,7 @@ class Swizzler:
         axis = self.swizzle_axis_numeric(axis_name)
         swizzled = self.hdf5["0"].require_group("SwizzledData")
         
-        swizzled.create_dataset(axis_name, data=np.transpose(self.data, axis), dtype=self.little_endian_dtype)
+        swizzled.create_dataset(axis_name, data=np.transpose(self.data, axis), dtype=self.data.dtype)
     
     def swizzle(self, args):
         self.parallel_todo = []
@@ -72,7 +72,7 @@ class SwizzlerParallel(Swizzler):
     def __enter__(self):
         from mpi4py import MPI
         self.hdf5kwargs = {'driver': 'mpio', 'comm': MPI.COMM_WORLD}
-        super(SwizzlerParallel, self).__init__()
+        super(SwizzlerParallel, self).__enter__()
         self.rank = MPI.COMM_WORLD.rank
         return self
     
@@ -123,4 +123,12 @@ def swizzle(args):
         if args.parallel:
             for funcname, num_procs in parallel_todo:
                 logging.info("Swizzling in parallel with %d processes and function %s..." % (num_procs, funcname))
-                subprocess.run(['mpiexec', '-n', num_procs, 'hdf5swizzle', '--funcname', funcname, '--quiet', args.quiet])
+                
+                command = ['mpiexec', '-n', str(num_procs), 'hdf5swizzle', '--funcname', funcname]
+                
+                if args.quiet:
+                    command.append('--quiet')
+                    
+                command.append(args.filename)
+                
+                subprocess.run(command)

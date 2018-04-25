@@ -10,7 +10,7 @@ import numpy as np
 from astropy.io import fits
 import h5py
 
-from hdf5swizzle import swizzle
+from .hdf5swizzle import swizzle
 
 # helper class storing state for an original or swizzled dataset
 class Dataset:
