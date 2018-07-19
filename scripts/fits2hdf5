@@ -13,7 +13,8 @@ if __name__ == '__main__':
     parser.add_argument('--histograms', nargs="+", help='Axes along which histograms should be calculated, e.g. XY, Z, XYZ', default=DEFAULTS.histograms)
     parser.add_argument('--percentiles', nargs="+", help='Axes along which percentiles should be calculated, e.g. XY, Z, XYZ', default=DEFAULTS.percentiles)
     parser.add_argument('--swizzles', nargs="+", help='Axes for which swizzled datasets should be written, e.g. ZYXW', default=DEFAULTS.swizzles)
-    parser.add_argument('--output-dir', help="Output directory. By default, the directory of the original file will be used.")
+    parser.add_argument('--output-dir', help="Output directory. By default, the directory of the original file will be used. This parameter will be ignored if an absolute path is provided for the --output parameter.")
+    parser.add_argument('--output', help="Output filename. By default, the original filename will be used, with the .fits suffix (if any) replaced by .hdf5. This filename may be a path. If it is an absolute path, the --output-dir parameter will be ignored.")
     parser.add_argument('--quiet', action='store_true', help="Suppress all print output.")
     
     # TODO if we want to split out stokes, we should pass in a stokes parameter

@@ -264,10 +264,14 @@ def convert(args):
     
     filedir, filename = os.path.split(args.filename)
     basefilename, _ = os.path.splitext(filename)
+    
+    output = args.output if args.output else basefilename + ".hdf5"
 
-    output_dir = args.output_dir if args.output_dir else filedir
-    # TODO: add an explicit output filename parameter
-    output_filepath = os.path.join(output_dir, basefilename + ".hdf5")
+    if os.path.isabs(output):
+        output_filepath = output
+    else:
+        output_dir = args.output_dir if args.output_dir else filedir
+        output_filepath = os.path.join(output_dir, output)
         
     with Converter(args.filename, output_filepath) as converter:
         converter.convert(args)
