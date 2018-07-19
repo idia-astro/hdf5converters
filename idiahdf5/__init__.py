@@ -1,13 +1,13 @@
 import argparse
-from . import fits2hdf5
+from .fits2hdf5 import convert, DEFAULTS
 
 def hdf5_convert(filename, **kwargs):
     arguments = {
         "filename": filename,
-        "statistics": ["XYZ", "XY", "Z"],
-        "histograms": ["XYZ", "XY"],
-        "percentiles": ["XYZ", "XY"],
-        "swizzles": ["ZYXW"],
+        "statistics": DEFAULTS.statistics,
+        "histograms": DEFAULTS.histograms,
+        "percentiles": DEFAULTS.percentiles,
+        "swizzles": DEFAULTS.swizzles,
         
         "quiet": True,
         "output_dir": None,
@@ -16,4 +16,4 @@ def hdf5_convert(filename, **kwargs):
     
     arguments.update(kwargs)
     args = argparse.Namespace(**arguments)
-    fits2hdf5.convert(args)
+    convert(args)

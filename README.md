@@ -24,3 +24,7 @@ You can also bypass the helper function and call the underlying converter functi
     from idiahdf5.fits2hdf5 import convert
     # construct the args object however you like
     convert(args)
+
+## Defaults
+
+By default both the function and the script are configured to generate a core set of additional datasets which is expected by the IDIA HDF5 viewer. These parameters can be overriden with custom parameters.

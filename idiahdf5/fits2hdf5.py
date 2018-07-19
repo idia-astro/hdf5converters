@@ -8,6 +8,13 @@ import re
 import itertools
 import logging
 
+# Defaults for wrapper function and commandline script
+class DEFAULTS:
+    statistics = ("XYZ", "XY", "Z")
+    histograms = ("XYZ", "XY")
+    percentiles = ("XYZ", "XY")
+    swizzles = ("ZYXW",)
+
 
 # helper class storing state for an original or swizzled dataset
 class Dataset:
@@ -259,6 +266,7 @@ def convert(args):
     basefilename, _ = os.path.splitext(filename)
 
     output_dir = args.output_dir if args.output_dir else filedir
+    # TODO: add an explicit output filename parameter
     output_filepath = os.path.join(output_dir, basefilename + ".hdf5")
         
     with Converter(args.filename, output_filepath) as converter:
