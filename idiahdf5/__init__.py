@@ -10,6 +10,7 @@ def hdf5_convert(filename, **kwargs):
         "swizzles": DEFAULTS.swizzles,
         
         "quiet": True,
+        "faster": False,
         "output_dir": None,
         "output": None,
         "chunks": None,
