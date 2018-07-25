@@ -7,6 +7,7 @@ import os
 import re
 import itertools
 import logging
+import time
 
 # Defaults for wrapper function and commandline script
 class DEFAULTS:
@@ -203,20 +204,39 @@ class Dataset:
                     swizzled_dataset[w, x, :, :] = swizzled_data_w[x, :, :]
 
     def write(self, args):
+        # save timestamps
+        if args.time:
+            times = []
+            def timestamp(msg):
+                times.append((time.time(), msg))
+        else:
+            def timestamp(msg):
+                pass
+
+        timestamp("START")
+        
         # write this dataset
         # TODO TODO TODO check that the number of chunks matches the data dimensions
         logging.info("Writing main dataset...")
         self.hdu_group.create_dataset(self.name, data=self.data, dtype=self.little_endian_dtype, chunks=tuple(args.chunks) if args.chunks else None)
         
+        timestamp("Main dataset")
+        
         # write statistics
         for axis_name in args.statistics:
             self.write_statistics(axis_name)
+        
+        timestamp("Statistics")
             
         for axis_name in args.histograms:
             self.write_histogram(axis_name)
+
+        timestamp("Histograms")
             
         for axis_name in args.percentiles:
             self.write_percentiles(axis_name)
+
+        timestamp("Percentiles")
         
         # write swizzled datasets
         for axis_name in args.swizzles:
@@ -224,9 +244,19 @@ class Dataset:
                 self.write_swizzled_dataset_faster(axis_name)
             else:
                 self.write_swizzled_dataset(axis_name)
+
+        timestamp("Swizzles")
         
         logging.info("Done!")
+        
+        if args.time:
+            durations = [(t2 - t1, msg2) for ((t1, msg1), (t2, msg2)) in zip(times[:-1], times[1:])]
+            total = sum(d for d, msg in durations)
             
+            print("\nTotal execution time: %.2fs" % total)
+            for duration, msg in durations:
+                print("%s: %.2fs (%.2f%%)" % (msg, duration, 100 * duration / total))
+
 
 class HDUGroup:
     # FITS header attributes to keep (exact names)

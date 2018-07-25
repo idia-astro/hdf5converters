@@ -11,6 +11,7 @@ def hdf5_convert(filename, **kwargs):
         
         "quiet": True,
         "faster": False,
+        "time": False,
         "output_dir": None,
         "output": None,
         "chunks": None,
