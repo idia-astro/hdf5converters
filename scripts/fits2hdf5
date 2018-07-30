@@ -16,7 +16,6 @@ if __name__ == '__main__':
     parser.add_argument('--output-dir', help="Output directory. By default, the directory of the original file will be used. This parameter will be ignored if an absolute path is provided for the --output parameter.")
     parser.add_argument('--output', help="Output filename. By default, the original filename will be used, with the .fits suffix (if any) replaced by .hdf5. This filename may be a path. If it is an absolute path, the --output-dir parameter will be ignored.")
     parser.add_argument('--quiet', action='store_true', help="Suppress all print output.")
-    parser.add_argument('--faster', action='store_true', help="Try to swizzle XYZ to ZYX more quickly, but using more memory.")
     parser.add_argument('--time', action='store_true', help="Show execution times.")
     
     # TODO if we want to split out stokes, we should pass in a stokes parameter

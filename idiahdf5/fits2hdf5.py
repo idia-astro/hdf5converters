@@ -160,48 +160,6 @@ class Dataset:
         axis = self.swizzle_axis_numeric(axis_name)
         swizzled = self.hdu_group.require_group("SwizzledData")
         swizzled.create_dataset(axis_name, data=np.transpose(self.data, axis), dtype=self.little_endian_dtype)
-        
-    def write_swizzled_dataset_faster(self, axis_name):
-        if axis_name not in ('ZYX', 'ZYXW') or self.data.ndim > 4:
-            self.write_swizzled_dataset(axis_name)
-        
-        if 'W' in axis_name and 'W' not in self.axes:
-            axis_name = axis_name.replace('W', '')
-            logging.warning("Trying to coerce swizzle axes to data axes. New swizzle axis: %s." % axis_name)
-            
-        
-        swizzled = self.hdu_group.require_group("SwizzledData")
-        
-        Z, Y, X = self.data.shape[-3:]
-        data_w = np.empty((Z, Y, X), dtype=self.data.dtype)
-
-        if axis_name == 'ZYX':
-            swizzled_dataset = swizzled.create_dataset(axis_name, (X, Y, Z), dtype=self.little_endian_dtype)
-            
-            for z in range(Z):
-                data_w[z] = self.data[z, :, :]
-                
-            swizzled_data_w = np.transpose(data_w, (2, 1, 0))
-            
-            for x in range(X):
-                swizzled_dataset[x, :, :] = swizzled_data_w[x, :, :]
-            
-        elif axis_name == 'ZYXW':
-            W = self.data.shape[0]
-            
-            swizzled_dataset = swizzled.create_dataset(axis_name, (W, X, Y, Z), dtype=self.little_endian_dtype)
-            
-            for w in range(W):
-                logging.info("Reading %d/%d ZYX slices..." % (w + 1, W))
-                for z in range(Z):
-                    data_w[z] = self.data[w, z, :, :]
-                
-                logging.info("Transposing %d/%d ZYX slices..." % (w + 1, W))
-                swizzled_data_w = np.transpose(data_w, (2, 1, 0))
-                    
-                logging.info("Writing %d/%d ZYX slices..." % (w + 1, W))
-                for x in range(X):
-                    swizzled_dataset[w, x, :, :] = swizzled_data_w[x, :, :]
 
     def write(self, args):
         # save timestamps
@@ -240,10 +198,7 @@ class Dataset:
         
         # write swizzled datasets
         for axis_name in args.swizzles:
-            if args.faster:
-                self.write_swizzled_dataset_faster(axis_name)
-            else:
-                self.write_swizzled_dataset(axis_name)
+            self.write_swizzled_dataset(axis_name)
 
         timestamp("Swizzles")
         
