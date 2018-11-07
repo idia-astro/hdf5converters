@@ -2,7 +2,7 @@ digraph {
     rankdir=TB
     ordering=out
     concentrate=true
-    
+
     node [style=filled fillcolor="#abd7e6"]
     file [label="/"]
     0
