@@ -1,7 +1,9 @@
 digraph {
-    rankdir=LR
+    rankdir=TB
+    ordering=out
+    concentrate=true
     
-    node [style=filled fillcolor=olivedrab3]
+    node [style=filled fillcolor="#abd7e6"]
     file [label="/"]
     0
     SwizzledData
@@ -15,14 +17,14 @@ digraph {
     XYZ
     Group
     
-    node [shape=octagon fillcolor=khaki1]
+    node [shape=octagon fillcolor="#ffbfca"]
     VERSION
     BUNIT
     NAXIS
     other_attrs [label="..."]
     Attribute
     
-    node [shape=box fillcolor=lightblue2]
+    node [shape=box fillcolor="#bfbfbf"]
     DATA
     COMMENT
     HISTORY
@@ -43,27 +45,12 @@ digraph {
     file -> VERSION
     file -> 0
     
-    0 -> DATA
-    
-    0 -> COMMENT
-    0 -> HISTORY
-    0 -> PERCENTILE_RANKS
-    
     0 -> BUNIT
     0 -> NAXIS
     0 -> other_attrs
     
-    0 -> SwizzledData
-    SwizzledData -> ZYXW
-    
-    0 -> MipMaps
-    MipMaps -> mmDATA
-    mmDATA -> DATA_XY_2
-    mmDATA -> DATA_XY_4
-    MipMaps -> mmZYXW
-    MipMaps -> mmMEAN_Z
-    
     0 -> Statistics
+    Statistics -> XYZ
     Statistics -> XY
     XY -> MEAN
     XY -> MAX
@@ -74,7 +61,22 @@ digraph {
     XY -> HIST_MIN
     XY -> HIST_MAX
     Statistics -> Z
-    Statistics -> XYZ
+    
+    0 -> DATA
+    
+    0 -> COMMENT
+    0 -> HISTORY
+    0 -> PERCENTILE_RANKS
+    
+    0 -> SwizzledData
+    SwizzledData -> ZYXW
+    
+    0 -> MipMaps
+    MipMaps -> mmDATA
+    mmDATA -> DATA_XY_2
+    mmDATA -> DATA_XY_4
+    MipMaps -> mmZYXW
+    MipMaps -> mmMEAN_Z
     
     subgraph cluster_legend {
         label="Legend"
