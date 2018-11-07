@@ -28,7 +28,6 @@ digraph {
     DATA
     COMMENT
     HISTORY
-    PERCENTILE_RANKS
     ZYXW
     DATA_XY_2
     DATA_XY_4
@@ -36,7 +35,6 @@ digraph {
     MAX
     MIN
     NAN_COUNT
-    PERCENTILES
     HISTOGRAM
     HIST_MIN
     HIST_MAX
@@ -56,7 +54,6 @@ digraph {
     XY -> MAX
     XY -> MIN
     XY -> NAN_COUNT
-    XY -> PERCENTILES
     XY -> HISTOGRAM
     XY -> HIST_MIN
     XY -> HIST_MAX
@@ -66,7 +63,6 @@ digraph {
     
     0 -> COMMENT
     0 -> HISTORY
-    0 -> PERCENTILE_RANKS
     
     0 -> SwizzledData
     SwizzledData -> ZYXW
