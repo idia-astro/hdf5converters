@@ -1,7 +1,10 @@
 digraph {
-    rankdir=TB
+    rankdir=LR
     ordering=out
     concentrate=true
+    
+    node [fontname="DejaVuSans" fontsize=18];
+    edge [fontname="DejaVuSans" fontsize=18];
     
     node [style=filled fillcolor="#abd7e6"]
     file [label="/"]
@@ -9,8 +12,6 @@ digraph {
     SwizzledData
     MipMaps
     mmDATA [label="DATA"]
-    mmZYXW [label="ZYXW"]
-    mmMEAN_Z [label="MEAN_Z"]
     Statistics
     XY
     Z
@@ -32,14 +33,13 @@ digraph {
     ZYXW
     DATA_XY_2
     DATA_XY_4
-    MEAN
+    SUM
+    SUM_SQ
     MAX
     MIN
     NAN_COUNT
     PERCENTILES
     HISTOGRAM
-    HIST_MIN
-    HIST_MAX
     Dataset
 
     file -> VERSION
@@ -52,14 +52,13 @@ digraph {
     0 -> Statistics
     Statistics -> XYZ
     Statistics -> XY
-    XY -> MEAN
+    XY -> SUM
+    XY -> SUM_SQ
     XY -> MAX
     XY -> MIN
     XY -> NAN_COUNT
     XY -> PERCENTILES
     XY -> HISTOGRAM
-    XY -> HIST_MIN
-    XY -> HIST_MAX
     Statistics -> Z
     
     0 -> DATA
@@ -75,11 +74,8 @@ digraph {
     MipMaps -> mmDATA
     mmDATA -> DATA_XY_2
     mmDATA -> DATA_XY_4
-    MipMaps -> mmZYXW
-    MipMaps -> mmMEAN_Z
     
     subgraph cluster_legend {
-        label="Legend"
         Group
         Attribute
         Dataset
