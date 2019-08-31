@@ -9,7 +9,7 @@ digraph {
     node [style=filled fillcolor="#abd7e6"]
     file [label="/"]
     0
-    SwizzledData
+    PermutedData
     MipMaps
     mmDATA [label="DATA"]
     Statistics
@@ -67,8 +67,8 @@ digraph {
     0 -> HISTORY
     0 -> PERCENTILE_RANKS
     
-    0 -> SwizzledData
-    SwizzledData -> ZYXW
+    0 -> PermutedData
+    PermutedData -> ZYXW
     
     0 -> MipMaps
     MipMaps -> mmDATA
