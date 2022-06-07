@@ -1,6 +1,10 @@
 # hdf5converters
 Python module to convert FITS images to HDF5 images using the [custom IDIA schema](https://github.com/idia-astro/hdf5converters/wiki/HDF5-Image-Schema).
 
+[![Stop sign light red](https://upload.wikimedia.org/wikipedia/commons/thumb/9/9d/Stop_sign_light_red.svg/64px-Stop_sign_light_red.svg.png)](https://commons.wikimedia.org/wiki/File:Stop_sign_light_red.svg)
+
+This is an outdated implementation which is not compatible with recent versions of the IDIA schema. Please use [`fits2idia`](https://github.com/CARTAvis/fits2idia) instead.
+
 ## Executable scripts
 
 `fits2hdf5` converts a single FITS file to HDF5 using the IDIA schema. The original data and a selection of header attributes are copied, and configurable statistics and swizzled datasets may also be written. Currently only the primary HDU from the original file is processed. To see a list of commandline parameters:
