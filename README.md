@@ -1,7 +1,7 @@
 # hdf5converters
 Python module to convert FITS images to HDF5 images using the [custom IDIA schema](https://github.com/idia-astro/hdf5converters/wiki/HDF5-Image-Schema).
 
-[![Stop sign light red](https://upload.wikimedia.org/wikipedia/commons/thumb/9/9d/Stop_sign_light_red.svg/64px-Stop_sign_light_red.svg.png)](https://commons.wikimedia.org/wiki/File:Stop_sign_light_red.svg)
+<a title="User:MagicImage, Public domain, via Wikimedia Commons" href="https://commons.wikimedia.org/wiki/File:Stop_sign_light_red.svg"><img width="64" align="left" alt="Stop sign light red" src="https://upload.wikimedia.org/wikipedia/commons/thumb/9/9d/Stop_sign_light_red.svg/64px-Stop_sign_light_red.svg.png"></a>
 
 This is an outdated implementation which is not compatible with recent versions of the IDIA schema. Please use [`fits2idia`](https://github.com/CARTAvis/fits2idia) instead.
 
